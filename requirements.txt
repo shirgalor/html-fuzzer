@@ -1,0 +1,18 @@
+# Browser Launcher Dependencies
+# ==============================
+# Core dependencies for browser automation
+
+# Selenium - WebDriver for browser control
+selenium>=4.0.0
+
+# Browser driver managers
+webdriver-manager>=4.0.0
+chromedriver-autoinstaller>=0.6.0
+
+# System utilities
+psutil>=5.9.0  # For process management
+requests>=2.31.0  # For HTTP requests to DevTools
+
+# UI automation (for comet_ui_automation.py)
+pyautogui>=0.9.54
+

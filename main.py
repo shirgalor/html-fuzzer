@@ -1,103 +1,137 @@
-#!/usr/bin/env python3
 """
-COMET AUTOMATION - Main Workflow
-================================
+Main Entry Point
+================
+Opens multiple local HTML files in a single browser session using
+the modular pipeline architecture.
 
-Simple automation workflow:
-1. Launch Comet browser with remote debugging
-2. Navigate to specified URL
-3. Click Assistant button
-4. Keep browser open for interaction
-
-Usage: python main.py
+Uses the new pipeline system which provides browser-specific workflows.
 """
 
 import time
-import attack_coment
-import navigation  
-import comet_ui_automation
+from pathlib import Path
+from browser_launcher import BrowserFactory, BrowserType
+from navigator import NavigatorFactory, NavigatorType
+from pipeline import PipelineFactory, PipelineType, PipelineConfig
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-TARGET_URL = "https://www.perplexity.ai/"  # Change this to your desired URL
-LOAD_WAIT_TIME = 5  # Seconds to wait for page loading
-STABILITY_WAIT_TIME = 2  # Seconds to wait for UI stabilization
+# Configuration
+HTMLS_FOLDER = Path(__file__).parent / "htmls"
+LOAD_WAIT_TIME = 2  # wait between opening tabs
+STABILITY_WAIT_TIME = 2
+PIPELINE_TYPE = PipelineType.COMET
+BROWSER_TYPE = BrowserType.COMET
+NAVIGATOR_TYPE = NavigatorType.COMET
+
 
 def main():
-    """Main automation workflow"""
-    print("="*60)
-    print("COMET AUTOMATION WORKFLOW")
-    print("="*60)
-    print(f"Target URL: {TARGET_URL}")
-    print(f"Load wait time: {LOAD_WAIT_TIME}s")
-    print("="*60)
+    """
+    Main function: Opens multiple local HTML files using the pipeline architecture.
     
-    # Step 1: Connect to Comet
-    print("\n[1/3] Connecting to Comet...")
-    driver = attack_coment.main()
-    
-    if not driver:
-        print("[ERROR] Failed to connect to Comet")
+    The workflow:
+    1. Create browser launcher and navigator factory
+    2. Use PipelineFactory to create Comet pipeline (opens Sidecar first)
+    3. Pipeline navigates to first HTML file
+    4. Manually open remaining HTML files in new tabs
+    5. Pipeline activates Assistant
+    """
+    print("=" * 60)
+    print("OPEN LOCAL HTMLS - PIPELINE ARCHITECTURE")
+    print("=" * 60)
+    print(f"HTMLs folder: {HTMLS_FOLDER}")
+    print(f"Pipeline: {PIPELINE_TYPE.value}")
+    print("=" * 60)
+
+    if not HTMLS_FOLDER.exists():
+        print(f"[ERROR] HTMLs folder not found: {HTMLS_FOLDER}")
         return False
+
+    html_files = sorted([p for p in HTMLS_FOLDER.iterdir() if p.suffix.lower() in {".html", ".htm"}])
+    if not html_files:
+        print(f"[WARNING] No HTML files found in {HTMLS_FOLDER}")
+        return False
+
+    print(f"[INFO] Found {len(html_files)} HTML files")
     
     try:
-        # Step 2: Navigate to target URL
-        print(f"\n[2/3] Navigating to URL...")
-        print(f"[INFO] Target: {TARGET_URL}")
+        # Create browser launcher
+        browser_launcher = BrowserFactory.create(BROWSER_TYPE)
         
-        navigation.navigate_to_url(driver, TARGET_URL)
-        time.sleep(LOAD_WAIT_TIME)
+        # Create navigator factory (callable that takes driver)
+        navigator_factory = lambda driver: NavigatorFactory.create(NAVIGATOR_TYPE, driver)
         
-        # Verify navigation
-        current_url = driver.current_url
-        print(f"[INFO] Current URL: {current_url}")
+        # Configure pipeline to open first HTML file
+        first_html = html_files[0]
+        config = PipelineConfig(
+            target_url=first_html.as_uri(),
+            load_wait_time=LOAD_WAIT_TIME,
+            stability_wait_time=STABILITY_WAIT_TIME,
+            keep_open=True,  # We'll handle cleanup manually
+            activate_features=True  # Activate Assistant
+        )
         
-        if TARGET_URL.replace('https://', '').replace('http://', '') not in current_url:
-            print(f"[WARNING] Navigation may have failed!")
-            print(f"[WARNING] Expected: {TARGET_URL}")
-            print(f"[WARNING] Got: {current_url}")
-        else:
-            print(f"[SUCCESS] Successfully navigated to target")
+        # Create and run pipeline
+        print(f"\n[INFO] Creating {PIPELINE_TYPE.value} pipeline...")
+        pipeline = PipelineFactory.create(
+            PIPELINE_TYPE,
+            browser_launcher=browser_launcher,
+            navigator_factory=navigator_factory,
+            config=config
+        )
         
-        # Step 3: Activate Assistant
-        print(f"\n[3/3] Activating Assistant...")
-        print(f"[INFO] Waiting {STABILITY_WAIT_TIME}s for UI to stabilize...")
-        time.sleep(STABILITY_WAIT_TIME)
+        # Run pipeline (opens Sidecar, navigates to first HTML, activates Assistant)
+        result = pipeline.run()
         
-        success = comet_ui_automation.click_assistant_button_ui()
-        
-        if success:
-            print("\n" + "="*60)
-            print("WORKFLOW COMPLETED SUCCESSFULLY!")
-            print("="*60)
-            print("✓ Comet launched and connected")
-            print(f"✓ Navigated to {TARGET_URL}")  
-            print("✓ Assistant activated")
-            print("="*60)
-            print("\n[INFO] Browser will remain open for interaction")
-            print("[INFO] Press Enter to close and exit...")
-            input()
-            return True
-        else:
-            print("\n[ERROR] Failed to activate Assistant")
+        if not result.success:
+            print(f"[ERROR] Pipeline failed: {result.message}")
             return False
         
+        # Get driver and navigator from pipeline result
+        driver = result.driver
+        navigator = NavigatorFactory.create(NAVIGATOR_TYPE, driver)
+        
+        # Open remaining HTML files in new tabs
+        if len(html_files) > 1:
+            print(f"\n[INFO] Opening remaining {len(html_files) - 1} HTML files in new tabs...")
+            remaining_files = html_files[1:]
+            
+            for i, html_file in enumerate(remaining_files, 2):
+                file_uri = html_file.as_uri()
+                print(f"  [{i}/{len(html_files)}] {html_file.name}")
+                
+                nav_result = navigator.navigate_to_url(file_uri, wait_time=0.3)
+                if not nav_result.success:
+                    print(f"    [WARNING] Failed to open: {nav_result.message}")
+            
+            time.sleep(LOAD_WAIT_TIME)
+        
+        # Print summary
+        print("\n" + "=" * 60)
+        print("DONE - ALL HTML FILES OPENED")
+        print("=" * 60)
+        print(f"✓ Launched {BROWSER_TYPE.value}")
+        print(f"✓ Opened Perplexity Sidecar")
+        print(f"✓ Opened {len(html_files)} HTML files")
+        print(f"✓ Activated Assistant")
+        print(f"✓ Total tabs: {len(navigator.get_window_handles())}")
+        print("=" * 60)
+        print("[INFO] Browser will remain open for interaction")
+        input("[INFO] Press Enter to close and exit... ")
+        
+        return True
+        
     except Exception as e:
-        print(f"\n[ERROR] Workflow failed: {e}")
+        print(f"[ERROR] Failed during execution: {e}")
+        import traceback
+        traceback.print_exc()
         return False
-    
+        
     finally:
-        print("\n[INFO] Closing browser connection...")
-        try:
-            driver.quit()
-        except Exception as e:
-            print(f"[WARNING] Error closing browser: {e}")
+        # Pipeline handles cleanup
+        pass
+
 
 if __name__ == "__main__":
-    success = main()
-    if success:
-        print("[INFO] Automation completed successfully")
+    ok = main()
+    if ok:
+        print("[INFO] Completed opening of HTML files in one session")
     else:
-        print("[ERROR] Automation failed")
-        input("Press Enter to exit...")
+        print("[ERROR] Opening failed or no files found")
