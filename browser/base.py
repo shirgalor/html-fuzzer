@@ -92,12 +92,18 @@ class BaseBrowser(ABC):
         pass
     
     @abstractmethod
-    def create_pipeline(self, config):
+    def create_pipeline(self, driver, navigator, config, **kwargs):
         """
         Create the pipeline for this browser type.
         
+        Pipeline receives driver and navigator from Browser (facade).
+        It does NOT launch or navigate - just runs workflow steps.
+        
         Args:
+            driver: Selenium WebDriver instance (already launched)
+            navigator: Navigator instance (already created)
             config: PipelineConfig instance
+            **kwargs: Additional pipeline-specific parameters (e.g., query, submit)
             
         Returns:
             Pipeline instance specific to this browser
@@ -193,34 +199,82 @@ class BaseBrowser(ABC):
         
         return self._navigator.open_local_html_files(folder, pattern, **kwargs)
     
-    def run_pipeline(self, config):
+    def run_pipeline(self, config, **kwargs):
         """
-        Run the complete browser automation pipeline.
+        Run the complete browser automation pipeline (FACADE ORCHESTRATOR).
+        
+        This is the main facade method that coordinates all components:
+        1. Launch browser (via Launcher) → get driver
+        2. Create navigator with driver
+        3. Navigate to target URL (via Navigator)
+        4. Create pipeline with driver & navigator
+        5. Run workflow (via Pipeline)
+        6. Handle keep_open option
+        
+        Browser is THE BOSS that manages the entire lifecycle.
         
         Args:
             config: PipelineConfig with target URL and settings
+            **kwargs: Additional pipeline-specific arguments
+                     (e.g., query="text" and submit=True for CometPipeline)
             
         Returns:
             PipelineResult object
         """
-        if not self._is_launched:
-            # Pipeline will launch browser itself
-            self._pipeline = self.create_pipeline(config)
+        print("=" * 60)
+        print(f"BROWSER FACADE - {self.get_browser_info().name}")
+        print("=" * 60)
+        
+        try:
+            # Step 1: Launch browser (if not already launched)
+            if not self._is_launched:
+                print("\n[FACADE] Step 1: Launching browser...")
+                if not self.launch():
+                    from pipeline.base import PipelineResult
+                    return PipelineResult(
+                        success=False,
+                        message="Failed to launch browser",
+                        steps_completed=[]
+                    )
+                print(f"[FACADE] ✓ Browser launched")
+            else:
+                print(f"\n[FACADE] Browser already launched, reusing...")
+            
+            # Step 2: Create and run pipeline workflow
+            # Pipeline will handle navigation to target URL
+            print(f"\n[FACADE] Step 2: Creating and running pipeline...")
+            self._pipeline = self.create_pipeline(
+                driver=self._driver,
+                navigator=self._navigator,
+                config=config,
+                **kwargs
+            )
+            
             result = self._pipeline.run()
             
-            # Update our state
-            self._driver = result.driver
-            if result.success:
-                self._navigator = self.create_navigator(self._driver)
-                self._is_launched = True
+            # Step 4: Handle keep_open option
+            if config.keep_open and result.success:
+                print("\n" + "=" * 60)
+                print(f"✓ FACADE COMPLETE - Browser remains open")
+                print("=" * 60)
+                print("[INFO] Press Enter to close browser and exit...")
+                input()
+                self.quit()
             
             return result
-        else:
-            # Browser already launched, create pipeline with existing driver
-            # Note: This would require pipeline to support existing driver
-            print("[INFO] Browser already launched, pipeline will use existing driver")
-            self._pipeline = self.create_pipeline(config)
-            return self._pipeline.run()
+            
+        except Exception as e:
+            print(f"[FACADE ERROR] Pipeline execution failed: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            from pipeline.base import PipelineResult
+            return PipelineResult(
+                success=False,
+                message=f"Facade error: {e}",
+                driver=self._driver,
+                steps_completed=[]
+            )
     
     def get_driver(self):
         """

@@ -3,17 +3,19 @@ Navigator Factory
 =================
 Factory pattern for creating navigator instances.
 
+Note: CometNavigator is now in browser.comet package.
+This factory is kept for backward compatibility and extensibility.
+
 Usage:
-    from navigator import NavigatorFactory, NavigatorType
+    from browser.comet import CometNavigator
     
-    navigator = NavigatorFactory.create(NavigatorType.COMET, driver)
+    navigator = CometNavigator(driver)
     navigator.navigate_to_url("https://example.com")
 """
 
 from enum import Enum
 from typing import Any, Type, Optional
 from .base import Navigator
-from .comet_navigator import CometNavigator
 
 
 class NavigatorType(Enum):
@@ -38,11 +40,14 @@ class NavigatorFactory:
     
     Uses registry pattern to map NavigatorType enums to their
     corresponding navigator classes.
+    
+    Note: Comet-specific implementation is in browser.comet package.
     """
     
     # Registry of navigator types to classes
     _NAVIGATOR_CLASSES: dict[NavigatorType, Type[Navigator]] = {
-        NavigatorType.COMET: CometNavigator,
+        # Comet is now in browser.comet package
+        # NavigatorType.COMET: CometNavigator,
         # Future navigators can be registered here:
         # NavigatorType.CHROME: ChromeNavigator,
         # NavigatorType.EDGE: EdgeNavigator,

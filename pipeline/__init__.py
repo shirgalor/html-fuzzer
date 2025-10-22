@@ -47,7 +47,6 @@ Each pipeline controls its own workflow:
 """
 
 from .base import BasePipeline, PipelineConfig, PipelineResult
-from .comet_pipeline import CometPipeline
 from .factory import PipelineFactory, PipelineType, create_pipeline
 
 __all__ = [
@@ -55,9 +54,6 @@ __all__ = [
     "BasePipeline",
     "PipelineConfig",
     "PipelineResult",
-    
-    # Concrete implementations
-    "CometPipeline",
     
     # Factory
     "PipelineFactory",

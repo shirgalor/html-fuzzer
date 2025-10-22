@@ -1,32 +1,21 @@
 """
-Browser Factory
-===============
+Browser Launcher Factory
+=========================
 Factory pattern for creating browser launchers.
 
-Makes it easy to add new browser types in the future while keeping
-the client code clean and maintainable.
+Note: CometBrowserLauncher is now in browser.comet package.
+This factory is kept for backward compatibility and extensibility.
 
 Usage:
-    from browser_launcher import BrowserFactory, BrowserType
+    from browser.comet import CometBrowserLauncher
     
-    # Simple usage
-    launcher = BrowserFactory.create(BrowserType.COMET)
-    driver = launcher.launch_and_attach()
-    
-    # With custom configuration
-    config = BrowserConfig(
-        executable_path=Path("C:/path/to/browser.exe"),
-        debug_port=9223,
-        start_maximized=True
-    )
-    launcher = BrowserFactory.create(BrowserType.COMET, config)
+    launcher = CometBrowserLauncher()
     driver = launcher.launch_and_attach()
 """
 
 from enum import Enum
 from typing import Optional, Type
 from .base import BrowserLauncher, BrowserConfig
-from .comet_launcher import CometBrowserLauncher
 
 
 class BrowserType(Enum):
@@ -52,11 +41,14 @@ class BrowserFactory:
     
     This factory uses a registry pattern to map BrowserType enums to
     their corresponding launcher classes.
+    
+    Note: Comet-specific implementation is in browser.comet package.
     """
     
     # Registry of browser types to launcher classes
     _BROWSER_CLASSES: dict[BrowserType, Type[BrowserLauncher]] = {
-        BrowserType.COMET: CometBrowserLauncher,
+        # Comet is now in browser.comet package
+        # BrowserType.COMET: CometBrowserLauncher,
         # Future browser launchers can be registered here:
         # BrowserType.CHROME: ChromeBrowserLauncher,
         # BrowserType.EDGE: EdgeBrowserLauncher,

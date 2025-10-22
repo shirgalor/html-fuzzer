@@ -69,30 +69,29 @@ class CometBrowser(BaseBrowser):
         """
         return NavigatorFactory.create(NavigatorType.COMET, driver)
     
-    def create_pipeline(self, config):
+    def create_pipeline(self, driver, navigator, config, **kwargs):
         """
         Create CometPipeline.
         
-        The Comet pipeline includes:
-        - Opening Perplexity Sidecar first
-        - Navigating to target URL
-        - Activating Assistant button
+        The Comet pipeline receives driver and navigator from Browser facade.
+        Browser has already navigated to Sidecar URL.
+        Pipeline just runs workflow (e.g., send query).
         
         Args:
+            driver: Selenium WebDriver (already attached to Comet)
+            navigator: CometNavigator instance (already created)
             config: PipelineConfig instance
+            **kwargs: Optional parameters (query, submit)
             
         Returns:
             CometPipeline instance
         """
-        # Create launcher and navigator factory
-        launcher = self.create_launcher()
-        nav_factory = lambda driver: self.create_navigator(driver)
-        
         return PipelineFactory.create(
             PipelineType.COMET,
-            browser_launcher=launcher,
-            navigator_factory=nav_factory,
-            config=config
+            driver=driver,
+            navigator=navigator,
+            config=config,
+            **kwargs
         )
     
     def get_attack_names(self) -> List[str]:

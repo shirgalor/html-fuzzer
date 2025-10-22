@@ -31,13 +31,11 @@ Usage:
 """
 
 from .base import Navigator, NavigationResult
-from .comet_navigator import CometNavigator
 from .factory import NavigatorFactory, NavigatorType, create_navigator
 
 __all__ = [
     'Navigator',
     'NavigationResult',
-    'CometNavigator',
     'NavigatorFactory',
     'NavigatorType',
     'create_navigator',

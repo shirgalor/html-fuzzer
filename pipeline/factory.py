@@ -3,16 +3,19 @@ Pipeline Factory
 ================
 Factory for creating browser-specific pipelines.
 
-Supports different browsers with their own workflows:
-- Comet: Sidecar + Assistant activation
-- Chrome: (Future) Extension loading
-- Firefox: (Future) DevTools configuration
+Note: CometPipeline is now in browser.comet package.
+This factory is kept for backward compatibility and extensibility.
+
+Usage:
+    from browser.comet import CometPipeline
+    
+    pipeline = CometPipeline(driver, navigator, config, **kwargs)
+    pipeline.run()
 """
 
 from enum import Enum
 from typing import Dict, Type, Callable
 from .base import BasePipeline, PipelineConfig
-from .comet_pipeline import CometPipeline
 
 
 class PipelineType(Enum):
@@ -26,7 +29,8 @@ class PipelineType(Enum):
 
 # Registry mapping pipeline types to their classes
 _PIPELINE_CLASSES: Dict[PipelineType, Type[BasePipeline]] = {
-    PipelineType.COMET: CometPipeline,
+    # Comet is now in browser.comet package
+    # PipelineType.COMET: CometPipeline,
 }
 
 
@@ -55,18 +59,20 @@ class PipelineFactory:
     @staticmethod
     def create(
         pipeline_type: PipelineType,
-        browser_launcher,
-        navigator_factory: Callable,
-        config: PipelineConfig
+        driver,
+        navigator,
+        config: PipelineConfig,
+        **kwargs
     ) -> BasePipeline:
         """
         Create a pipeline instance for the specified browser type.
         
         Args:
             pipeline_type: Type of pipeline to create (from PipelineType enum)
-            browser_launcher: BrowserLauncher instance for this browser
-            navigator_factory: Callable that creates Navigator (takes driver as arg)
+            driver: Selenium WebDriver instance (already launched)
+            navigator: Navigator instance (already created)
             config: Pipeline configuration
+            **kwargs: Additional pipeline-specific parameters
             
         Returns:
             Instance of the appropriate pipeline class
@@ -75,27 +81,29 @@ class PipelineFactory:
             ValueError: If pipeline_type is not supported
             
         Examples:
-            >>> config = PipelineConfig(target_url="file:///path/to/file.html")
+            >>> config = PipelineConfig(target_url="https://www.perplexity.ai/sidecar?copilot=true")
             >>> pipeline = PipelineFactory.create(
             ...     PipelineType.COMET,
-            ...     browser_launcher=comet_launcher,
-            ...     navigator_factory=nav_factory,
-            ...     config=config
+            ...     driver=driver,
+            ...     navigator=navigator,
+            ...     config=config,
+            ...     query="What is Python?",
+            ...     submit=False
             ... )
+            >>> result = pipeline.run()
         """
+        
+        # Get the pipeline class
         if pipeline_type not in _PIPELINE_CLASSES:
-            supported = ", ".join(pt.value for pt in _PIPELINE_CLASSES.keys())
             raise ValueError(
-                f"Unsupported pipeline type: {pipeline_type.value}. "
-                f"Supported types: {supported}"
+                f"Unsupported pipeline type: {pipeline_type}. "
+                f"Supported types: {list(_PIPELINE_CLASSES.keys())}"
             )
         
         pipeline_class = _PIPELINE_CLASSES[pipeline_type]
-        return pipeline_class(
-            browser_launcher=browser_launcher,
-            navigator_factory=navigator_factory,
-            config=config
-        )
+        
+        # Create and return the pipeline instance
+        return pipeline_class(driver, navigator, config, **kwargs)
     
     @staticmethod
     def register_pipeline(

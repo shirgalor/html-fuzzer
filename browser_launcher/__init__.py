@@ -33,13 +33,11 @@ Usage:
 """
 
 from .base import BrowserLauncher, BrowserConfig
-from .comet_launcher import CometBrowserLauncher
 from .factory import BrowserFactory, BrowserType, launch_browser
 
 __all__ = [
     'BrowserLauncher',
     'BrowserConfig',
-    'CometBrowserLauncher',
     'BrowserFactory',
     'BrowserType',
     'launch_browser',

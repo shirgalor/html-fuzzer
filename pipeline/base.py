@@ -39,218 +39,127 @@ class BasePipeline(ABC):
     """
     Abstract base class for browser automation pipelines.
     
+    Pipeline receives driver and navigator from Browser (facade).
+    It does NOT launch browser or navigate - just runs workflow steps.
+    
     Different browsers may have different workflows:
-    - Comet: Open Sidecar → Navigate → Activate Assistant
-    - Chrome: Navigate → Run extensions
-    - Firefox: Navigate → Configure dev tools
+    - Comet: Send query to Sidecar → Wait for response
+    - Chrome: Run extensions → Capture results
+    - Firefox: Execute dev tools commands → Export data
     
     Subclasses should implement:
-    - setup_browser(): Browser-specific initialization
-    - pre_navigation_steps(): Steps before main navigation
-    - post_navigation_steps(): Steps after main navigation
-    - cleanup(): Browser-specific cleanup
+    - get_browser_name(): Return browser name
+    - pre_workflow_steps(): Steps before main workflow
+    - execute_workflow(): Main workflow logic
+    - post_workflow_steps(): Steps after main workflow
     """
     
     def __init__(
         self,
-        browser_launcher,
-        navigator_factory,
-        config: PipelineConfig
+        driver: WebDriver,
+        navigator,
+        config: PipelineConfig,
+        **kwargs
     ):
         """
-        Initialize pipeline with dependencies.
+        Initialize pipeline with driver and navigator (provided by Browser facade).
         
         Args:
-            browser_launcher: BrowserLauncher instance for this browser
-            navigator_factory: Factory to create Navigator instances
+            driver: Selenium WebDriver instance (already launched and navigated)
+            navigator: Navigator instance (already created)
             config: Pipeline configuration
+            **kwargs: Additional browser-specific parameters
         """
-        self.browser_launcher = browser_launcher
-        self.navigator_factory = navigator_factory
+        self.driver = driver
+        self.navigator = navigator
         self.config = config
-        self.driver: Optional[WebDriver] = None
-        self.navigator = None
-        self._owns_browser = True
+        self.extra_params = kwargs
         self._steps_completed = []
     
     def run(self) -> PipelineResult:
         """
-        Execute the complete pipeline workflow.
+        Execute the pipeline workflow.
         
-        Template method that orchestrates the pipeline steps:
-        1. Setup browser
-        2. Pre-navigation steps (browser-specific)
-        3. Navigate to target URL
-        4. Post-navigation steps (browser-specific)
-        5. Cleanup
+        Browser (facade) has already:
+        - Launched browser
+        - Created driver and navigator
+        - Navigated to target URL
+        
+        Pipeline just runs workflow steps:
+        1. Pre-workflow steps (optional browser-specific prep)
+        2. Execute main workflow (core automation logic)
+        3. Post-workflow steps (optional browser-specific cleanup)
         
         Returns:
             PipelineResult with success status and details
         """
         print("=" * 60)
-        print(f"BROWSER AUTOMATION PIPELINE - {self.get_browser_name()}")
+        print(f"PIPELINE WORKFLOW - {self.get_browser_name()}")
         print("=" * 60)
-        print(f"Target URL: {self.config.target_url}")
-        print(f"Load wait time: {self.config.load_wait_time}s")
+        print(f"Current URL: {self.navigator.get_current_url()}")
         print("=" * 60)
         
         try:
-            # Step 1: Setup browser
-            print("\n[1/?] Setting up browser...")
-            setup_result = self.setup_browser()
-            if not setup_result:
+            # Step 1: Pre-workflow steps (browser-specific)
+            print("\n[PIPELINE] Step 1: Pre-workflow steps...")
+            pre_result = self.pre_workflow_steps()
+            if not pre_result:
                 return PipelineResult(
                     success=False,
-                    message="Failed to setup browser",
-                    steps_completed=self._steps_completed
-                )
-            self._steps_completed.append("Browser setup")
-            
-            # Step 2: Pre-navigation steps (browser-specific)
-            print("\n[2/?] Running pre-navigation steps...")
-            pre_nav_result = self.pre_navigation_steps()
-            if not pre_nav_result:
-                return PipelineResult(
-                    success=False,
-                    message="Pre-navigation steps failed",
+                    message="Pre-workflow steps failed",
                     driver=self.driver,
                     steps_completed=self._steps_completed
                 )
+            self._steps_completed.append("Pre-workflow steps")
             
-            # Step 3: Navigate to target URL
-            print(f"\n[3/?] Navigating to target URL...")
-            nav_result = self.navigate_to_target()
-            if not nav_result:
+            # Step 2: Execute main workflow
+            print("\n[PIPELINE] Step 2: Executing main workflow...")
+            workflow_result = self.execute_workflow()
+            if not workflow_result:
                 return PipelineResult(
                     success=False,
-                    message="Navigation to target failed",
+                    message="Workflow execution failed",
                     driver=self.driver,
                     steps_completed=self._steps_completed
                 )
-            self._steps_completed.append(f"Navigated to {self.config.target_url}")
+            self._steps_completed.append("Main workflow")
             
-            # Step 4: Post-navigation steps (browser-specific)
-            print(f"\n[4/?] Running post-navigation steps...")
-            post_nav_result = self.post_navigation_steps()
-            if not post_nav_result:
-                # Don't fail pipeline for optional post-nav steps
-                print("[WARNING] Post-navigation steps had issues")
+            # Step 3: Post-workflow steps
+            print("\n[PIPELINE] Step 3: Post-workflow steps...")
+            post_result = self.post_workflow_steps()
+            if not post_result:
+                # Don't fail pipeline for optional post-workflow steps
+                print("[WARNING] Post-workflow steps had issues")
+            else:
+                self._steps_completed.append("Post-workflow steps")
             
             # Success!
             self.print_success_summary()
             
-            if not self.config.keep_open and self._owns_browser:
-                print("\n[INFO] Browser will remain open for interaction")
-                print("[INFO] Press Enter to close and exit...")
-                input()
-            
             return PipelineResult(
                 success=True,
-                message="Pipeline completed successfully",
+                message="Pipeline workflow completed successfully",
                 driver=self.driver,
                 steps_completed=self._steps_completed
             )
             
         except Exception as e:
-            print(f"\n[ERROR] Pipeline failed: {e}")
+            print(f"[PIPELINE ERROR] Workflow failed: {e}")
             import traceback
             traceback.print_exc()
             return PipelineResult(
                 success=False,
-                message=f"Exception: {str(e)}",
+                message=f"Pipeline error: {e}",
                 driver=self.driver,
                 steps_completed=self._steps_completed
             )
-        
-        finally:
-            if not self.config.keep_open:
-                self.cleanup()
     
-    def setup_browser(self) -> bool:
-        """
-        Launch browser and create navigator.
-        
-        Returns:
-            True if setup successful, False otherwise
-        """
-        try:
-            # Launch browser
-            self.driver = self.browser_launcher.launch_and_attach()
-            if not self.driver:
-                print("[ERROR] Failed to launch browser")
-                return False
-            
-            # Create navigator
-            self.navigator = self.navigator_factory(self.driver)
-            
-            return True
-            
-        except Exception as e:
-            print(f"[ERROR] Browser setup failed: {e}")
-            return False
-    
-    @abstractmethod
-    def pre_navigation_steps(self) -> bool:
-        """
-        Execute browser-specific steps before navigating to target URL.
-        
-        Examples:
-        - Comet: Open Perplexity Sidecar page
-        - Chrome: Load extensions
-        - Firefox: Configure devtools
-        
-        Returns:
-            True if steps successful, False otherwise
-        """
-        pass
-    
-    def navigate_to_target(self) -> bool:
-        """
-        Navigate to the target URL specified in config.
-        
-        Returns:
-            True if navigation successful, False otherwise
-        """
-        try:
-            result = self.navigator.navigate_to_url(
-                self.config.target_url,
-                wait_time=self.config.load_wait_time
-            )
-            
-            if not result.success:
-                print(f"[ERROR] Navigation failed: {result.message}")
-                return False
-            
-            # Verify navigation
-            current_url = self.navigator.get_current_url()
-            print(f"[INFO] Current URL: {current_url}")
-            print(f"[SUCCESS] {result.message}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"[ERROR] Navigation exception: {e}")
-            return False
-    
-    @abstractmethod
-    def post_navigation_steps(self) -> bool:
-        """
-        Execute browser-specific steps after navigating to target URL.
-        
-        Examples:
-        - Comet: Activate Assistant button
-        - Chrome: Run automation scripts
-        - Firefox: Inject content scripts
-        
-        Returns:
-            True if steps successful, False otherwise
-        """
-        pass
+    # ==================== Abstract Methods (subclasses must implement) ====================
     
     @abstractmethod
     def get_browser_name(self) -> str:
         """
-        Get the display name of this browser.
+        Return the name of the browser.
         
         Returns:
             Browser name (e.g., "Comet", "Chrome", "Firefox")
@@ -258,27 +167,58 @@ class BasePipeline(ABC):
         pass
     
     @abstractmethod
-    def print_success_summary(self):
+    def pre_workflow_steps(self) -> bool:
         """
-        Print browser-specific success summary.
+        Execute browser-specific steps before main workflow.
         
-        This is called when pipeline completes successfully.
-        Should print a formatted summary of completed steps.
+        Examples:
+        - Comet: Verify Sidecar page loaded correctly
+        - Chrome: Verify extensions are loaded
+        - Firefox: Configure dev tools settings
+        
+        Returns:
+            True if steps successful, False otherwise
         """
         pass
     
-    def cleanup(self):
+    @abstractmethod
+    def execute_workflow(self) -> bool:
         """
-        Clean up browser resources.
+        Execute the main workflow logic (core automation).
         
-        Override this if you need custom cleanup logic.
+        Examples:
+        - Comet: Send query to Sidecar → Wait for response
+        - Chrome: Run extension automation → Capture screenshots
+        - Firefox: Execute dev tools commands → Export data
+        
+        Returns:
+            True if workflow successful, False otherwise
         """
-        if self._owns_browser and self.driver:
-            print("\n[INFO] Closing browser connection...")
-            try:
-                if self.browser_launcher:
-                    self.browser_launcher.quit()
-                else:
-                    self.driver.quit()
-            except Exception as e:
-                print(f"[WARNING] Error closing browser: {e}")
+        pass
+    
+    @abstractmethod
+    def post_workflow_steps(self) -> bool:
+        """
+        Execute browser-specific steps after main workflow.
+        
+        Examples:
+        - Comet: Verify Assistant response received
+        - Chrome: Clean up extension state
+        - Firefox: Save dev tools logs
+        
+        Returns:
+            True if steps successful, False otherwise
+        """
+        pass
+    
+    # ==================== Helper Methods ====================
+    
+    def print_success_summary(self):
+        """Print success summary after pipeline completion."""
+        print("\n" + "=" * 60)
+        print(f"✓ {self.get_browser_name().upper()} PIPELINE COMPLETED SUCCESSFULLY")
+        print("=" * 60)
+        print(f"Steps completed: {len(self._steps_completed)}")
+        for i, step in enumerate(self._steps_completed, 1):
+            print(f"  {i}. {step}")
+        print("=" * 60)

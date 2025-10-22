@@ -65,7 +65,7 @@ Available Browsers:
 """
 
 from .base import BaseBrowser, BrowserInfo
-from .comet_browser import CometBrowser
+from .comet import CometBrowser
 from .factory import BrowserFactory, BrowserType, create_browser
 
 __all__ = [

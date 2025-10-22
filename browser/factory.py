@@ -13,7 +13,7 @@ Each browser bundles together:
 from enum import Enum
 from typing import Dict, Type
 from .base import BaseBrowser
-from .comet_browser import CometBrowser
+from .comet import CometBrowser
 
 
 class BrowserType(Enum):
