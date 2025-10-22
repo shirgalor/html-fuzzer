@@ -40,13 +40,16 @@ class CometPipeline(BasePipeline):
             driver: Selenium WebDriver (already attached to Comet)
             navigator: CometNavigator instance (already created)
             config: Pipeline configuration
-            **kwargs: Optional parameters (query, submit, read_responses)
+            **kwargs: Optional parameters (query, submit, conversation, read_responses)
         """
         super().__init__(driver, navigator, config, **kwargs)
         
         # Extract optional query parameters
         self.query: Optional[str] = kwargs.get('query', None)
         self.submit_query: bool = kwargs.get('submit', False)
+        
+        # New conversation mode parameters
+        self.conversation: Optional[list] = kwargs.get('conversation', None)
         self.read_responses: bool = kwargs.get('read_responses', True)
     
     def get_browser_name(self) -> str:
@@ -83,15 +86,40 @@ class CometPipeline(BasePipeline):
     
     def execute_workflow(self) -> bool:
         """
-        Execute workflow: Send query to Sidecar if provided.
+        Execute workflow: Send query/conversation to Sidecar if provided.
+        
+        Supports two modes:
+        1. Single query mode: Send one query (with optional response reading)
+        2. Conversation mode: Multi-turn conversation with the assistant
         
         Returns:
             True if successful (or no query provided)
         """
-        if not self.query:
-            print(f"[COMET] No query provided, skipping")
+        # Mode 1: Conversation mode (takes priority)
+        if self.conversation:
+            print(f"[COMET] === CONVERSATION MODE ===")
+            print(f"[COMET] Messages to send: {len(self.conversation)}")
+            print(f"[COMET] Read responses: {self.read_responses}")
+            
+            conversation_log = self.navigator.have_conversation(
+                messages=self.conversation,
+                read_responses=self.read_responses,
+                wait_between_messages=2.0
+            )
+            
+            # Store conversation in result for later retrieval
+            self.result.metadata['conversation'] = conversation_log
+            
+            print(f"[COMET] ✓ Conversation completed")
+            print(f"[COMET] Total turns: {len(conversation_log)}")
             return True
         
+        # Mode 2: Single query mode
+        if not self.query:
+            print(f"[COMET] No query or conversation provided, skipping")
+            return True
+        
+        print(f"[COMET] === SINGLE QUERY MODE ===")
         print(f"[COMET] Query: '{self.query}'")
         print(f"[COMET] Submit: {self.submit_query}")
         print(f"[COMET] Read response: {self.read_responses}")
