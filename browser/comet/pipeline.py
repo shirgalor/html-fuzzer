@@ -40,13 +40,14 @@ class CometPipeline(BasePipeline):
             driver: Selenium WebDriver (already attached to Comet)
             navigator: CometNavigator instance (already created)
             config: Pipeline configuration
-            **kwargs: Optional parameters (query, submit)
+            **kwargs: Optional parameters (query, submit, read_responses)
         """
         super().__init__(driver, navigator, config, **kwargs)
         
         # Extract optional query parameters
         self.query: Optional[str] = kwargs.get('query', None)
         self.submit_query: bool = kwargs.get('submit', False)
+        self.read_responses: bool = kwargs.get('read_responses', True)
     
     def get_browser_name(self) -> str:
         """Return the browser name."""
@@ -88,25 +89,46 @@ class CometPipeline(BasePipeline):
             True if successful (or no query provided)
         """
         if not self.query:
-            print(f"[COMET] No query provided, skipping query sending")
+            print(f"[COMET] No query provided, skipping")
             return True
         
-        print(f"[COMET] Sending query to Sidecar...")
         print(f"[COMET] Query: '{self.query}'")
         print(f"[COMET] Submit: {self.submit_query}")
+        print(f"[COMET] Read response: {self.read_responses}")
         
-        # Use navigator to send query
-        result = self.navigator.send_query_to_sidecar(
+        # Send query
+        success = self.navigator.send_query_to_sidecar(
             query=self.query,
             submit=self.submit_query
         )
         
-        if result:
-            print(f"[COMET] ✓ Query sent successfully")
-            return True
-        else:
+        if not success:
             print(f"[COMET] ✗ Failed to send query")
             return False
+        
+        print(f"[COMET] ✓ Query sent successfully")
+        
+        # Read response if requested and query was submitted
+        if self.submit_query and self.read_responses:
+            print(f"[COMET] Reading assistant response...")
+            
+            # Wait for streaming to complete
+            self.navigator.wait_for_response_streaming(timeout=60.0)
+            
+            # Read the response
+            response = self.navigator.read_assistant_response(
+                wait_for_completion=True,
+                max_wait=60.0
+            )
+            
+            if response:
+                print(f"[COMET] ✓ Got response")
+                # Store in result metadata
+                self.result.metadata['response'] = response
+            else:
+                print(f"[COMET] ⚠ Could not read response")
+        
+        return True
     
     def post_workflow_steps(self) -> bool:
         """

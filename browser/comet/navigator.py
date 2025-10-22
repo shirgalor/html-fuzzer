@@ -364,3 +364,334 @@ class CometNavigator(Navigator):
             import traceback
             traceback.print_exc()
             return False
+    
+    def read_assistant_response(self, wait_for_completion: bool = True, max_wait: float = 60.0) -> Optional[str]:
+        """
+        Read the assistant's response from Perplexity Sidecar.
+        
+        The assistant's response appears in a message container after submitting a query.
+        This method waits for the response to appear and reads the text.
+        
+        Args:
+            wait_for_completion: If True, wait for the response to finish streaming
+            max_wait: Maximum time to wait for response (seconds)
+            
+        Returns:
+            The assistant's response text, or None if not found
+        """
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            
+            print(f"[COMET] Waiting for assistant response...")
+            
+            # Wait for response container to appear
+            # Perplexity typically uses divs with specific classes for responses
+            response_selectors = [
+                "div[class*='answer']",
+                "div[class*='response']",
+                "div[class*='message']",
+                "div[data-role='assistant']",
+                ".prose",  # Common class for formatted text
+                "[class*='markdown']"
+            ]
+            
+            start_time = time.time()
+            response_element = None
+            
+            # Try each selector
+            for selector in response_selectors:
+                try:
+                    print(f"[COMET] Trying selector: {selector}")
+                    wait = WebDriverWait(self.driver, 5)
+                    elements = wait.until(
+                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
+                    )
+                    
+                    if elements:
+                        # Get the last/most recent element
+                        response_element = elements[-1]
+                        print(f"[COMET] ✓ Found response element with selector: {selector}")
+                        break
+                        
+                except Exception as e:
+                    print(f"[COMET] No elements with selector {selector}: {e}")
+                    continue
+            
+            if not response_element:
+                print(f"[COMET] ✗ Could not find response element")
+                return None
+            
+            # If waiting for completion, use the intelligent streaming detector
+            if wait_for_completion:
+                print(f"[COMET] Waiting for response to finish streaming...")
+                
+                # Use the smart streaming detection
+                completed = self.wait_for_response_streaming(timeout=max_wait)
+                
+                if not completed:
+                    print(f"[COMET] ⚠ Response may not be complete, but returning current content")
+            else:
+                # Just wait a bit for initial content to appear
+                time.sleep(2)
+            
+            # Get final response text
+            response_text = response_element.text.strip()
+            
+            if response_text:
+                print(f"[COMET] ✓ Got response ({len(response_text)} characters)")
+                print(f"[COMET] Response preview: {response_text[:200]}...")
+                return response_text
+            else:
+                print(f"[COMET] ⚠ Response element found but text is empty")
+                return None
+                
+        except Exception as e:
+            print(f"[COMET ERROR] Failed to read response: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def wait_for_response_streaming(self, timeout: float = 60.0) -> bool:
+        """
+        Intelligently wait for the assistant's response to finish streaming.
+        
+        Uses multiple detection methods:
+        1. Monitors text length changes in the response element
+        2. Checks for streaming indicators (spinners, loading states)
+        3. Looks for "stop generating" button presence
+        
+        Args:
+            timeout: Maximum time to wait (seconds)
+            
+        Returns:
+            True if streaming completed, False if timeout
+        """
+        try:
+            from selenium.webdriver.common.by import By
+            
+            print(f"[COMET] Intelligently waiting for response to complete...")
+            
+            # Find the response element first
+            response_element = self._find_latest_response_element()
+            
+            if not response_element:
+                print(f"[COMET] ⚠ No response element found yet")
+                return False
+            
+            # Strategy: Monitor text length changes
+            start_time = time.time()
+            previous_length = 0
+            stable_count = 0
+            check_interval = 0.5  # Check every 500ms
+            stability_threshold = 4  # Need 4 consecutive stable checks (2 seconds)
+            
+            print(f"[COMET] Monitoring response text changes...")
+            
+            while time.time() - start_time < timeout:
+                try:
+                    # Get current response length
+                    current_text = response_element.text.strip()
+                    current_length = len(current_text)
+                    
+                    # Check if length has changed
+                    if current_length == previous_length and current_length > 0:
+                        stable_count += 1
+                        if stable_count >= stability_threshold:
+                            print(f"[COMET] ✓ Response stable at {current_length} chars for {stable_count * check_interval:.1f}s")
+                            
+                            # Double-check: Look for "stop generating" button or streaming indicators
+                            if self._is_actively_streaming():
+                                print(f"[COMET] Still streaming (indicators detected), continuing to wait...")
+                                stable_count = 0  # Reset counter
+                                time.sleep(check_interval)
+                                continue
+                            
+                            print(f"[COMET] ✓ Response complete! Final length: {current_length} chars")
+                            return True
+                    else:
+                        # Text is still changing
+                        if current_length > previous_length:
+                            print(f"[COMET] Response growing: {previous_length} → {current_length} chars")
+                        stable_count = 0
+                        previous_length = current_length
+                    
+                    time.sleep(check_interval)
+                    
+                except Exception as e:
+                    print(f"[COMET] Error reading response: {e}")
+                    time.sleep(check_interval)
+            
+            print(f"[COMET] ⚠ Timeout reached ({timeout}s), returning anyway")
+            print(f"[COMET] Final response length: {previous_length} chars")
+            return False
+            
+        except Exception as e:
+            print(f"[COMET ERROR] Error waiting for streaming: {e}")
+            return False
+    
+    def _find_latest_response_element(self):
+        """
+        Find the most recent response element from the assistant.
+        
+        Returns:
+            WebElement or None
+        """
+        try:
+            from selenium.webdriver.common.by import By
+            
+            # Try multiple selectors that Perplexity might use
+            selectors = [
+                "div[class*='answer']",
+                "div[class*='response']",
+                ".prose",
+                "[class*='markdown']",
+                "div[class*='message']"
+            ]
+            
+            for selector in selectors:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    visible_elements = [el for el in elements if el.is_displayed()]
+                    
+                    if visible_elements:
+                        # Return the last (most recent) element
+                        return visible_elements[-1]
+                except Exception:
+                    continue
+            
+            return None
+            
+        except Exception:
+            return None
+    
+    def _is_actively_streaming(self) -> bool:
+        """
+        Check if the assistant is actively streaming a response.
+        
+        Looks for:
+        - "Stop generating" button
+        - Loading/streaming indicators
+        - Animated elements
+        
+        Returns:
+            True if actively streaming, False otherwise
+        """
+        try:
+            from selenium.webdriver.common.by import By
+            
+            # Check for "stop generating" button (strong indicator)
+            stop_button_selectors = [
+                "button[aria-label*='stop']",
+                "button[class*='stop']",
+                "button:contains('Stop')",
+                "[class*='stop-generate']"
+            ]
+            
+            for selector in stop_button_selectors:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    if any(el.is_displayed() for el in elements):
+                        return True
+                except Exception:
+                    continue
+            
+            # Check for loading/streaming indicators
+            streaming_indicators = [
+                "[class*='loading']",
+                "[class*='streaming']",
+                "[class*='spinner']",
+                "[class*='animate-pulse']",
+                "svg[class*='animate-spin']"
+            ]
+            
+            for selector in streaming_indicators:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    if any(el.is_displayed() for el in elements):
+                        return True
+                except Exception:
+                    continue
+            
+            return False
+            
+        except Exception:
+            return False
+    
+    def have_conversation(self, messages: List[str], read_responses: bool = True, 
+                         wait_between_messages: float = 2.0) -> List[dict]:
+        """
+        Have a multi-turn conversation with the Perplexity assistant.
+        
+        Args:
+            messages: List of messages to send to the assistant
+            read_responses: If True, read and return assistant responses
+            wait_between_messages: Time to wait between sending messages (seconds)
+            
+        Returns:
+            List of dicts with format: {'role': 'user'|'assistant', 'content': str}
+        """
+        conversation = []
+        
+        try:
+            for i, message in enumerate(messages):
+                print(f"\n[COMET] === Turn {i+1}/{len(messages)} ===")
+                print(f"[COMET] User: {message}")
+                
+                # Add user message to conversation
+                conversation.append({
+                    'role': 'user',
+                    'content': message
+                })
+                
+                # Send the message
+                success = self.send_query_to_sidecar(message, submit=True)
+                
+                if not success:
+                    print(f"[COMET] ✗ Failed to send message {i+1}")
+                    conversation.append({
+                        'role': 'assistant',
+                        'content': '[ERROR: Failed to send message]'
+                    })
+                    continue
+                
+                # Read the response if requested
+                if read_responses:
+                    # Wait for streaming to complete
+                    self.wait_for_response_streaming(timeout=60.0)
+                    
+                    # Read the response
+                    response = self.read_assistant_response(
+                        wait_for_completion=True,
+                        max_wait=60.0
+                    )
+                    
+                    if response:
+                        print(f"[COMET] Assistant: {response[:200]}...")
+                        conversation.append({
+                            'role': 'assistant',
+                            'content': response
+                        })
+                    else:
+                        print(f"[COMET] ✗ Failed to read response")
+                        conversation.append({
+                            'role': 'assistant',
+                            'content': '[ERROR: Failed to read response]'
+                        })
+                
+                # Wait before next message (to allow time to prepare input)
+                if i < len(messages) - 1:
+                    print(f"[COMET] Waiting {wait_between_messages}s before next message...")
+                    time.sleep(wait_between_messages)
+            
+            print(f"\n[COMET] === Conversation Complete ===")
+            print(f"[COMET] Total turns: {len(messages)}")
+            
+            return conversation
+            
+        except Exception as e:
+            print(f"[COMET ERROR] Conversation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return conversation

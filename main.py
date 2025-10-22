@@ -7,6 +7,7 @@ Workflow:
 1. Browser facade launches Comet
 2. Browser facade navigates to Sidecar URL
 3. Pipeline sends query to Sidecar (if provided)
+4. Reads the assistant's response
 """
 
 import time
@@ -20,7 +21,8 @@ SIDECAR_URL = "https://www.perplexity.ai/sidecar?copilot=true"
 
 # Query configuration
 QUERY = "What is Python?"  # Set to None to skip query
-SUBMIT_QUERY = False  # True to submit, False to just type
+SUBMIT_QUERY = True  # True to submit, False to just type
+READ_RESPONSE = True  # True to read the assistant's response
 
 
 def main():
@@ -28,15 +30,18 @@ def main():
     Main function: Launch Comet, open Sidecar, and send query.
     """
     print("=" * 60)
-    print("COMET BROWSER - PERPLEXITY SIDECAR WITH QUERY")
+    print("COMET BROWSER - PERPLEXITY SIDECAR ASSISTANT")
     print("=" * 60)
     print(f"Browser: {BROWSER_TYPE.value}")
     print(f"Target: {SIDECAR_URL}")
+    
     if QUERY:
-        print(f"Query: '{QUERY}'")
+        print(f"\nQuery: '{QUERY}'")
         print(f"Submit: {SUBMIT_QUERY}")
+        print(f"Read Response: {READ_RESPONSE}")
     else:
-        print(f"Query: None (just open Sidecar)")
+        print(f"\nNo query (just open Sidecar)")
+    
     print("=" * 60)
     
     try:
@@ -53,10 +58,12 @@ def main():
         
         # Run pipeline (Browser facade orchestrates everything)
         print(f"\n[INFO] Running Comet pipeline...")
+        
         result = browser.run_pipeline(
             config,
-            query=QUERY,      # Pass query to pipeline
-            submit=SUBMIT_QUERY  # Pass submit flag
+            query=QUERY,
+            submit=SUBMIT_QUERY,
+            read_responses=READ_RESPONSE
         )
         
         if not result.success:
@@ -65,6 +72,13 @@ def main():
         
         print(f"\n[SUCCESS] Pipeline completed!")
         print(f"[INFO] Steps: {', '.join(result.steps_completed)}")
+        
+        # Display response if available
+        if 'response' in result.metadata:
+            print(f"\n" + "=" * 60)
+            print("ASSISTANT RESPONSE")
+            print("=" * 60)
+            print(result.metadata['response'])
         
         return True
         
