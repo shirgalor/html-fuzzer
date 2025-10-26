@@ -80,6 +80,10 @@ class CometBrowserLauncher(BrowserLauncher):
         # Add any extra custom arguments
         args.extend(self.config.extra_args)
         
+        # Add startup URL (Perplexity Sidecar with copilot parameter)
+        # This ensures the browser opens with the correct URL from the start
+        args.append("https://www.perplexity.ai/sidecar?copilot=true")
+        
         return args
     
     def get_process_names(self) -> List[str]:

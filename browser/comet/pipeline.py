@@ -6,7 +6,8 @@ Pipeline implementation for Perplexity Comet browser.
 Workflow (after Browser facade has launched and navigated to Sidecar):
 1. Pre-workflow: Verify Sidecar loaded correctly
 2. Execute workflow: Send query to Sidecar input (if query provided)
-3. Post-workflow: Wait for response (if query submitted)
+3. NEW: Conversion stage - Use conversion module for query/response
+4. Post-workflow: Wait for response (if query submitted)
 """
 
 import time
@@ -17,6 +18,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from pipeline.base import BasePipeline, PipelineConfig, PipelineResult
+# NOTE: ConversionFactory imported lazily when needed (not at module level)
 
 
 class CometPipeline(BasePipeline):
@@ -40,7 +42,7 @@ class CometPipeline(BasePipeline):
             driver: Selenium WebDriver (already attached to Comet)
             navigator: CometNavigator instance (already created)
             config: Pipeline configuration
-            **kwargs: Optional parameters (query, submit, conversation, read_responses)
+            **kwargs: Optional parameters (query, submit, conversation, read_responses, use_conversion, save_html)
         """
         super().__init__(driver, navigator, config, **kwargs)
         
@@ -51,6 +53,14 @@ class CometPipeline(BasePipeline):
         # New conversation mode parameters
         self.conversation: Optional[list] = kwargs.get('conversation', None)
         self.read_responses: bool = kwargs.get('read_responses', True)
+        
+        # NEW: Conversion module flag
+        self.use_conversion: bool = kwargs.get('use_conversion', False)
+        self.conversion = None  # Will be initialized if needed
+        
+        # NEW: HTML and text saving
+        self.save_html: Optional[str] = kwargs.get('save_html', None)
+        self.save_text: Optional[str] = kwargs.get('save_text', None)
     
     def get_browser_name(self) -> str:
         """Return the browser name."""
@@ -65,9 +75,50 @@ class CometPipeline(BasePipeline):
         """
         print(f"[COMET] Navigating to Sidecar...")
         
+        # Check if multiple tabs are open
+        all_handles = self.driver.window_handles
+        print(f"[DEBUG] Number of tabs open: {len(all_handles)}")
+        
+        if len(all_handles) > 1:
+            print(f"[COMET] Multiple tabs detected, checking which has correct URL...")
+            
+            SIDECAR_URL = "https://www.perplexity.ai/sidecar?copilot=true"
+            correct_handle = None
+            
+            # Check each tab for the correct URL
+            for handle in all_handles:
+                self.driver.switch_to.window(handle)
+                current_url = self.driver.current_url
+                print(f"[DEBUG] Tab URL: {current_url}")
+                
+                if "copilot=true" in current_url:
+                    print(f"[COMET] ✓ Found tab with copilot=true parameter")
+                    correct_handle = handle
+                    break
+            
+            if correct_handle:
+                self.driver.switch_to.window(correct_handle)
+                print(f"[COMET] Switched to correct tab")
+            else:
+                # Close extra tabs and keep only the first one
+                print(f"[COMET] No tab with copilot=true found, closing extra tabs...")
+                main_handle = all_handles[0]
+                for handle in all_handles[1:]:
+                    self.driver.switch_to.window(handle)
+                    self.driver.close()
+                self.driver.switch_to.window(main_handle)
+                print(f"[COMET] Closed extra tabs, will navigate to correct URL")
+        
         # Navigate to Sidecar URL
         SIDECAR_URL = "https://www.perplexity.ai/sidecar?copilot=true"
-        nav_result = self.navigator.navigate_to_url(SIDECAR_URL, wait_time=3)
+        
+        # Check current URL
+        current_url = self.navigator.get_current_url()
+        print(f"[COMET] Current URL before navigation: {current_url}")
+        
+        # Always navigate to ensure we have the correct URL with copilot parameter
+        print(f"[COMET] Navigating to: {SIDECAR_URL}")
+        nav_result = self.navigator.navigate_to_url(SIDECAR_URL, wait_time=5)
         
         if not nav_result.success:
             print(f"[COMET] ✗ Failed to navigate to Sidecar: {nav_result.message}")
@@ -89,73 +140,81 @@ class CometPipeline(BasePipeline):
         Execute workflow: Send query/conversation to Sidecar if provided.
         
         Supports two modes:
-        1. Single query mode: Send one query (with optional response reading)
-        2. Conversation mode: Multi-turn conversation with the assistant
+        1. Conversion mode (RECOMMENDED): Use conversion module for query/response
+        2. Conversation mode: Multi-turn conversation (legacy - to be migrated to conversion)
         
         Returns:
             True if successful (or no query provided)
         """
-        # Mode 1: Conversation mode (takes priority)
-        if self.conversation:
-            print(f"[COMET] === CONVERSATION MODE ===")
-            print(f"[COMET] Messages to send: {len(self.conversation)}")
-            print(f"[COMET] Read responses: {self.read_responses}")
+        # Mode 1: Conversion module mode (RECOMMENDED!)
+        if self.query and (self.use_conversion or self.submit_query):
+            print(f"[COMET] === CONVERSION MODULE MODE ===")
+            print(f"[COMET] Query: '{self.query}'")
+            print(f"[COMET] Using conversion module for clean query/response...")
             
-            conversation_log = self.navigator.have_conversation(
-                messages=self.conversation,
-                read_responses=self.read_responses,
-                wait_between_messages=2.0
-            )
+            # Lazy import to avoid circular dependencies
+            from conversion import ConversionFactory, ConversionType
             
-            # Store conversation in result for later retrieval
-            self.result.metadata['conversation'] = conversation_log
+            # Create conversion handler
+            if not self.conversion:
+                print(f"[COMET] Creating conversion handler...")
+                self.conversion = ConversionFactory.create(
+                    ConversionType.COMET,
+                    self.driver,
+                    self.navigator
+                )
             
-            print(f"[COMET] ✓ Conversation completed")
-            print(f"[COMET] Total turns: {len(conversation_log)}")
-            return True
-        
-        # Mode 2: Single query mode
-        if not self.query:
-            print(f"[COMET] No query or conversation provided, skipping")
-            return True
-        
-        print(f"[COMET] === SINGLE QUERY MODE ===")
-        print(f"[COMET] Query: '{self.query}'")
-        print(f"[COMET] Submit: {self.submit_query}")
-        print(f"[COMET] Read response: {self.read_responses}")
-        
-        # Send query
-        success = self.navigator.send_query_to_sidecar(
-            query=self.query,
-            submit=self.submit_query
-        )
-        
-        if not success:
-            print(f"[COMET] ✗ Failed to send query")
-            return False
-        
-        print(f"[COMET] ✓ Query sent successfully")
-        
-        # Read response if requested and query was submitted
-        if self.submit_query and self.read_responses:
-            print(f"[COMET] Reading assistant response...")
-            
-            # Wait for streaming to complete
-            self.navigator.wait_for_response_streaming(timeout=60.0)
-            
-            # Read the response
-            response = self.navigator.read_assistant_response(
-                wait_for_completion=True,
+            # Execute conversion: send query + capture response
+            conversion_result = self.conversion.execute(
+                query=self.query,
+                capture=self.read_responses,
+                save_html=self.save_html,  # Save HTML if specified
+                save_text=self.save_text,  # Save text if specified
                 max_wait=60.0
             )
             
-            if response:
-                print(f"[COMET] ✓ Got response")
-                # Store in result metadata
-                self.result.metadata['response'] = response
+            # Store result
+            self.metadata['conversion_result'] = {
+                'success': conversion_result.success,
+                'query': conversion_result.query,
+                'response': conversion_result.response,
+                'response_html': conversion_result.response_html,
+                'html_filepath': conversion_result.html_filepath,
+                'text_filepath': conversion_result.text_filepath,
+                'error': conversion_result.error
+            }
+            
+            if conversion_result.success:
+                print(f"[COMET] ✓ Conversion completed successfully")
+                if conversion_result.response:
+                    print(f"[COMET] ✓ Response captured ({len(conversion_result.response)} chars)")
+                if conversion_result.html_filepath:
+                    print(f"[COMET] ✓ HTML saved to: {conversion_result.html_filepath}")
+                if conversion_result.text_filepath:
+                    print(f"[COMET] ✓ Text saved to: {conversion_result.text_filepath}")
             else:
-                print(f"[COMET] ⚠ Could not read response")
+                print(f"[COMET] ✗ Conversion failed: {conversion_result.error}")
+                return False
+            
+            return True
         
+        # Mode 2: Conversation mode (legacy - will be migrated to conversion module later)
+        if self.conversation:
+            print(f"[COMET] === CONVERSATION MODE (LEGACY) ===")
+            print(f"[COMET] ⚠ Conversation mode not yet migrated to conversion module")
+            print(f"[COMET] Messages to send: {len(self.conversation)}")
+            print(f"[COMET] This mode is deprecated - use single query conversion for now")
+            
+            # TODO: Implement multi-turn conversation in conversion module
+            # For now, just return success and note it in metadata
+            self.metadata['conversation'] = [
+                {'role': 'system', 'content': 'Conversation mode not yet implemented with conversion module'}
+            ]
+            
+            return True
+        
+        # No query or conversation provided
+        print(f"[COMET] No query or conversation provided, skipping")
         return True
     
     def post_workflow_steps(self) -> bool:

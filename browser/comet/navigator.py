@@ -106,15 +106,42 @@ class CometNavigator(Navigator):
                     print("[WARNING] File URL did not load; trying fallbacks...")
                     return self._navigate_file_url_fallback(url)
             else:
-                # For HTTP(S) URLs, check if domain matches
-                normalized_url = url.replace('https://', '').replace('http://', '')
-                if normalized_url in current_url:
-                    print("[SUCCESS] Navigation completed successfully")
+                # For HTTP(S) URLs, check exact match including query parameters
+                # Normalize both URLs for comparison
+                normalized_target = url.replace('https://', '').replace('http://', '').lower()
+                normalized_current = current_url.replace('https://', '').replace('http://', '').lower()
+                
+                # Exact match is best
+                if normalized_target == normalized_current:
+                    print("[SUCCESS] Navigation completed successfully (exact match)")
                     return NavigationResult(True, current_url, "Navigation successful")
-                else:
+                
+                # Check if we have the full target URL in current (allows for trailing slashes, etc)
+                if normalized_target in normalized_current:
+                    print("[SUCCESS] Navigation completed successfully (target URL found)")
+                    return NavigationResult(True, current_url, "Navigation successful")
+                
+                # Check if current URL is missing query parameters that target has
+                if '?' in normalized_target and '?' not in normalized_current:
+                    # Base URLs match but query params missing
+                    base_target = normalized_target.split('?')[0]
+                    base_current = normalized_current.split('?')[0] if '?' in normalized_current else normalized_current
+                    
+                    if base_target == base_current or base_target in base_current:
+                        print(f"[WARNING] Base URL matches but query parameters missing!")
+                        print(f"[WARNING] Expected: {normalized_target}")
+                        print(f"[WARNING] Got: {normalized_current}")
+                        # This is likely the issue - return failure to trigger retry
+                        return NavigationResult(False, current_url, "Query parameters missing from URL")
+                
+                # Check if domain at least matches
+                if any(part in normalized_current for part in normalized_target.split('/') if len(part) > 5):
                     print(f"[WARNING] Navigation may not have reached target")
                     # Return success anyway (might be redirect)
                     return NavigationResult(True, current_url, "Navigation completed (possible redirect)")
+                else:
+                    print(f"[ERROR] Navigation failed - URL completely different")
+                    return NavigationResult(False, current_url, "Navigation failed")
         
         except Exception as e:
             print(f"[ERROR] Navigation failed: {e}")
@@ -232,368 +259,4 @@ class CometNavigator(Navigator):
         except Exception as e:
             print(f"[ERROR] Failed to open local HTML files: {e}")
             return []
-    
-    def send_query_to_sidecar(self, query: str, submit: bool = True) -> bool:
-        """
-        Send a query to Perplexity Sidecar input field.
-        
-        Sidecar uses a contenteditable div with id="ask-input", not a textarea.
-        
-        Args:
-            query: The text to type
-            submit: If True, press Enter to submit
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.common.keys import Keys
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-            
-            print(f"[COMET] Looking for Sidecar input field...")
-            
-            # Bring window to focus and refresh page
-            print(f"[COMET] Bringing window to focus...")
-            try:
-                self.driver.switch_to.window(self.driver.current_window_handle)
-                self.driver.execute_script("window.focus();")
-                
-                # Refresh the page to ensure it's fully loaded
-                print(f"[COMET] Refreshing page to ensure full load...")
-                self.driver.refresh()
-                time.sleep(3)
-                print(f"[COMET] Page refreshed, current URL: {self.get_current_url()}")
-            except Exception as e:
-                print(f"[WARN] Could not refresh page: {e}")
-            
-            # Wait for page to become interactive
-            print(f"[COMET] Waiting for page to become interactive...")
-            time.sleep(2)
-            
-            # Method 1: Find by ID (ask-input) with explicit wait
-            try:
-                print(f"[COMET] Attempting to find element by ID: ask-input")
-                
-                # Wait up to 10 seconds for element to be visible
-                wait = WebDriverWait(self.driver, 10)
-                ask_input = wait.until(
-                    EC.visibility_of_element_located((By.ID, "ask-input"))
-                )
-                
-                print(f"[COMET] ✓ Found ask-input element by ID and it's visible!")
-                
-                # Click to focus
-                ask_input.click()
-                print(f"[COMET] Clicked on input field")
-                time.sleep(0.5)
-                
-                # Type the query
-                print(f"[COMET] Typing query: '{query}'")
-                ask_input.send_keys(query)
-                print(f"[COMET] ✓ Query typed successfully")
-                time.sleep(0.5)
-                
-                if submit:
-                    print(f"[COMET] Submitting query...")
-                    ask_input.send_keys(Keys.RETURN)
-                    time.sleep(1)
-                    print(f"[COMET] ✓ Query submitted")
-                
-                return True
-                    
-            except Exception as e:
-                print(f"[COMET] Could not find visible ask-input by ID: {e}")
-            
-            # Method 2: Find any contenteditable element with wait
-            try:
-                print(f"[COMET] Trying contenteditable='true' selector...")
-                wait = WebDriverWait(self.driver, 5)
-                contenteditable = wait.until(
-                    EC.visibility_of_element_located((By.CSS_SELECTOR, "[contenteditable='true']"))
-                )
-                print(f"[COMET] ✓ Found visible contenteditable element!")
-                
-                contenteditable.click()
-                time.sleep(0.5)
-                
-                print(f"[COMET] Typing query: '{query}'")
-                contenteditable.send_keys(query)
-                print(f"[COMET] ✓ Query typed successfully")
-                time.sleep(0.5)
-                
-                if submit:
-                    contenteditable.send_keys(Keys.RETURN)
-                    time.sleep(1)
-                    print(f"[COMET] ✓ Query submitted")
-                
-                return True
-                    
-            except Exception as e:
-                print(f"[COMET] Could not find visible contenteditable: {e}")
-            
-            # Method 3: Find div with role="textbox"
-            try:
-                print(f"[COMET] Trying div[role='textbox'] selector...")
-                textbox = self.driver.find_element(By.CSS_SELECTOR, "div[role='textbox']")
-                print(f"[COMET] ✓ Found textbox role element!")
-                
-                if textbox.is_displayed():
-                    textbox.click()
-                    time.sleep(0.5)
-                    textbox.send_keys(query)
-                    print(f"[COMET] ✓ Query typed successfully")
-                    
-                    if submit:
-                        textbox.send_keys(Keys.RETURN)
-                        time.sleep(1)
-                        print(f"[COMET] ✓ Query submitted")
-                    
-                    return True
-                    
-            except Exception as e:
-                print(f"[COMET] Could not find textbox role: {e}")
-            
-            print("[COMET] ✗ Could not find any suitable input field")
-            print("[COMET] The Sidecar page may not have loaded correctly")
-            return False
-            
-        except Exception as e:
-            print(f"[COMET ERROR] Failed to send query: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
-    
-    def read_assistant_response(self, wait_for_completion: bool = True, max_wait: float = 60.0) -> Optional[str]:
-        """
-        Read the assistant's response from Perplexity Sidecar.
-        
-        The assistant's response appears in a message container after submitting a query.
-        This method waits for the response to appear and reads the text.
-        
-        Args:
-            wait_for_completion: If True, wait for the response to finish streaming
-            max_wait: Maximum time to wait for response (seconds)
-            
-        Returns:
-            The assistant's response text, or None if not found
-        """
-        try:
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-            
-            print(f"[COMET] Waiting for assistant response...")
-            
-            # Wait for response container to appear
-            # Perplexity typically uses divs with specific classes for responses
-            response_selectors = [
-                "div[class*='answer']",
-                "div[class*='response']",
-                "div[class*='message']",
-                "div[data-role='assistant']",
-                ".prose",  # Common class for formatted text
-                "[class*='markdown']"
-            ]
-            
-            start_time = time.time()
-            response_element = None
-            
-            # Try each selector
-            for selector in response_selectors:
-                try:
-                    print(f"[COMET] Trying selector: {selector}")
-                    wait = WebDriverWait(self.driver, 5)
-                    elements = wait.until(
-                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
-                    )
-                    
-                    if elements:
-                        # Get the last/most recent element
-                        response_element = elements[-1]
-                        print(f"[COMET] ✓ Found response element with selector: {selector}")
-                        break
-                        
-                except Exception as e:
-                    print(f"[COMET] No elements with selector {selector}: {e}")
-                    continue
-            
-            if not response_element:
-                print(f"[COMET] ✗ Could not find response element")
-                return None
-            
-            # If waiting for completion, monitor the response text
-            if wait_for_completion:
-                print(f"[COMET] Waiting for response to complete...")
-                previous_text = ""
-                stable_count = 0
-                
-                while time.time() - start_time < max_wait:
-                    current_text = response_element.text.strip()
-                    
-                    if current_text == previous_text and current_text:
-                        stable_count += 1
-                        if stable_count >= 3:  # Text hasn't changed for 3 checks
-                            print(f"[COMET] ✓ Response appears complete")
-                            break
-                    else:
-                        stable_count = 0
-                        previous_text = current_text
-                    
-                    time.sleep(1)
-                
-                if time.time() - start_time >= max_wait:
-                    print(f"[COMET] ⚠ Max wait time reached, returning current response")
-            else:
-                time.sleep(2)  # Brief wait for initial content
-            
-            # Get final response text
-            response_text = response_element.text.strip()
-            
-            if response_text:
-                print(f"[COMET] ✓ Got response ({len(response_text)} characters)")
-                print(f"[COMET] Response preview: {response_text[:200]}...")
-                return response_text
-            else:
-                print(f"[COMET] ⚠ Response element found but text is empty")
-                return None
-                
-        except Exception as e:
-            print(f"[COMET ERROR] Failed to read response: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-    
-    def wait_for_response_streaming(self, timeout: float = 60.0) -> bool:
-        """
-        Wait for the assistant's response to finish streaming.
-        
-        Monitors for streaming indicators (like loading spinners) to disappear.
-        
-        Args:
-            timeout: Maximum time to wait (seconds)
-            
-        Returns:
-            True if streaming completed, False if timeout
-        """
-        try:
-            from selenium.webdriver.common.by import By
-            
-            print(f"[COMET] Waiting for response streaming to complete...")
-            
-            # Look for common streaming indicators
-            streaming_indicators = [
-                "div[class*='loading']",
-                "div[class*='streaming']",
-                "div[class*='spinner']",
-                "[class*='animate-pulse']",
-                "svg[class*='animate']"
-            ]
-            
-            start_time = time.time()
-            
-            while time.time() - start_time < timeout:
-                # Check if any streaming indicators are still present
-                indicators_found = False
-                
-                for selector in streaming_indicators:
-                    try:
-                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        visible_elements = [el for el in elements if el.is_displayed()]
-                        
-                        if visible_elements:
-                            indicators_found = True
-                            break
-                    except Exception:
-                        continue
-                
-                if not indicators_found:
-                    print(f"[COMET] ✓ No streaming indicators found, response likely complete")
-                    return True
-                
-                time.sleep(0.5)
-            
-            print(f"[COMET] ⚠ Timeout waiting for streaming to complete")
-            return False
-            
-        except Exception as e:
-            print(f"[COMET ERROR] Error waiting for streaming: {e}")
-            return False
-    
-    def have_conversation(self, messages: List[str], read_responses: bool = True, 
-                         wait_between_messages: float = 2.0) -> List[dict]:
-        """
-        Have a multi-turn conversation with the Perplexity assistant.
-        
-        Args:
-            messages: List of messages to send to the assistant
-            read_responses: If True, read and return assistant responses
-            wait_between_messages: Time to wait between sending messages (seconds)
-            
-        Returns:
-            List of dicts with format: {'role': 'user'|'assistant', 'content': str}
-        """
-        conversation = []
-        
-        try:
-            for i, message in enumerate(messages):
-                print(f"\n[COMET] === Turn {i+1}/{len(messages)} ===")
-                print(f"[COMET] User: {message}")
-                
-                # Add user message to conversation
-                conversation.append({
-                    'role': 'user',
-                    'content': message
-                })
-                
-                # Send the message
-                success = self.send_query_to_sidecar(message, submit=True)
-                
-                if not success:
-                    print(f"[COMET] ✗ Failed to send message {i+1}")
-                    conversation.append({
-                        'role': 'assistant',
-                        'content': '[ERROR: Failed to send message]'
-                    })
-                    continue
-                
-                # Read the response if requested
-                if read_responses:
-                    # Wait for streaming to complete
-                    self.wait_for_response_streaming(timeout=60.0)
-                    
-                    # Read the response
-                    response = self.read_assistant_response(
-                        wait_for_completion=True,
-                        max_wait=60.0
-                    )
-                    
-                    if response:
-                        print(f"[COMET] Assistant: {response[:200]}...")
-                        conversation.append({
-                            'role': 'assistant',
-                            'content': response
-                        })
-                    else:
-                        print(f"[COMET] ✗ Failed to read response")
-                        conversation.append({
-                            'role': 'assistant',
-                            'content': '[ERROR: Failed to read response]'
-                        })
-                
-                # Wait before next message (to allow time to prepare input)
-                if i < len(messages) - 1:
-                    print(f"[COMET] Waiting {wait_between_messages}s before next message...")
-                    time.sleep(wait_between_messages)
-            
-            print(f"\n[COMET] === Conversation Complete ===")
-            print(f"[COMET] Total turns: {len(messages)}")
-            
-            return conversation
-            
-        except Exception as e:
-            print(f"[COMET ERROR] Conversation failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return conversation
+

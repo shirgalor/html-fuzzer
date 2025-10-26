@@ -29,10 +29,13 @@ class PipelineResult:
     message: str
     driver: Optional[WebDriver] = None
     steps_completed: list[str] = None
+    metadata: dict = None
     
     def __post_init__(self):
         if self.steps_completed is None:
             self.steps_completed = []
+        if self.metadata is None:
+            self.metadata = {}
 
 
 class BasePipeline(ABC):
@@ -75,6 +78,7 @@ class BasePipeline(ABC):
         self.config = config
         self.extra_params = kwargs
         self._steps_completed = []
+        self.metadata = {}  # Initialize metadata dictionary
     
     def run(self) -> PipelineResult:
         """
@@ -140,7 +144,8 @@ class BasePipeline(ABC):
                 success=True,
                 message="Pipeline workflow completed successfully",
                 driver=self.driver,
-                steps_completed=self._steps_completed
+                steps_completed=self._steps_completed,
+                metadata=self.metadata  # Include metadata
             )
             
         except Exception as e:

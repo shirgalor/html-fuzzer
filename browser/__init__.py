@@ -45,18 +45,6 @@ Usage:
         print(f"Testing {attack}...")
         # Run fuzzing tests
 
-Architecture Layers:
-    
-    Layer 4 (HIGHEST):  browser/          ← YOU ARE HERE
-                        ↓
-    Layer 3:           pipeline/         (workflows)
-                        ↓
-    Layer 2:           navigator/        (navigation)
-                        ↓
-    Layer 1:           browser_launcher/ (launching)
-    
-    Each Browser composes all lower layers into a complete system.
-
 Available Browsers:
     - CometBrowser: Perplexity Comet with AI Assistant
     - (Future) ChromeBrowser: Google Chrome

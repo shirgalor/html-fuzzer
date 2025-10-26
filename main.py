@@ -20,18 +20,21 @@ SIDECAR_URL = "https://www.perplexity.ai/sidecar?copilot=true"
 
 # Query configuration - Choose ONE mode:
 
-# MODE 1: Single Query (simple mode - just type or send one question)
-QUERY = None  # "What is Python?"  # Set to None to skip single query mode
+# MODE 1: Single Query with Conversion Module (NEW - RECOMMENDED!)
+QUERY = "What is the capital of France?"
+USE_CONVERSION = True  # True = use new conversion module, False = use legacy navigator
 SUBMIT_QUERY = True  # True to submit, False to just type
 READ_RESPONSE = True  # True to read the assistant's response
+SAVE_HTML = "output/response.html"  # Path to save HTML, or None to skip
+SAVE_TEXT = "output/response.txt"   # Path to save plain text, or None to skip
 
 # MODE 2: Conversation (multi-turn mode - full conversation with assistant)
-CONVERSATION = [
-    "What is Python?",
-    "Can you give me a simple code example?",
-    "How do I install it on Windows?"
-]  # Set to None to disable conversation mode
-# CONVERSATION = None  # Uncomment to disable conversation mode
+# CONVERSATION = [
+#     "What is Python?",
+#     "Can you give me a simple code example?",
+#     "How do I install it on Windows?"
+# ]
+CONVERSATION = None  # Set to None to disable conversation mode
 
 
 def main():
@@ -56,8 +59,13 @@ def main():
     elif QUERY:
         print(f"\n💬 MODE: Single Query")
         print(f"Query: '{QUERY}'")
+        print(f"Use Conversion Module: {USE_CONVERSION}")
         print(f"Submit: {SUBMIT_QUERY}")
         print(f"Read Response: {READ_RESPONSE}")
+        if SAVE_HTML:
+            print(f"Save HTML: {SAVE_HTML}")
+        if SAVE_TEXT:
+            print(f"Save Text: {SAVE_TEXT}")
     else:
         print(f"\n👁 MODE: Just open Sidecar (no interaction)")
     
@@ -90,6 +98,11 @@ def main():
             pipeline_kwargs['query'] = QUERY
             pipeline_kwargs['submit'] = SUBMIT_QUERY
             pipeline_kwargs['read_responses'] = READ_RESPONSE
+            pipeline_kwargs['use_conversion'] = USE_CONVERSION  # NEW!
+            if SAVE_HTML:
+                pipeline_kwargs['save_html'] = SAVE_HTML  # NEW!
+            if SAVE_TEXT:
+                pipeline_kwargs['save_text'] = SAVE_TEXT  # NEW!
         
         # Run the pipeline
         result = browser.run_pipeline(config, **pipeline_kwargs)
@@ -101,8 +114,31 @@ def main():
         print(f"\n[SUCCESS] Pipeline completed!")
         print(f"[INFO] Steps: {', '.join(result.steps_completed)}")
         
+        # Display conversion result if available (NEW!)
+        if 'conversion_result' in result.metadata:
+            conv_result = result.metadata['conversion_result']
+            print(f"\n" + "=" * 60)
+            print("CONVERSION MODULE RESULT")
+            print("=" * 60)
+            print(f"Success: {conv_result['success']}")
+            print(f"Query: {conv_result['query']}")
+            
+            if conv_result.get('html_filepath'):
+                print(f"\n📄 HTML saved to: {conv_result['html_filepath']}")
+            
+            if conv_result.get('text_filepath'):
+                print(f"📝 Text saved to: {conv_result['text_filepath']}")
+            
+            if conv_result['response']:
+                print(f"\n🤖 ASSISTANT RESPONSE:")
+                print("-" * 60)
+                print(conv_result['response'])
+                print("-" * 60)
+            elif conv_result['error']:
+                print(f"Error: {conv_result['error']}")
+        
         # Display conversation or response if available
-        if 'conversation' in result.metadata:
+        elif 'conversation' in result.metadata:
             print(f"\n" + "=" * 60)
             print("CONVERSATION LOG")
             print("=" * 60)

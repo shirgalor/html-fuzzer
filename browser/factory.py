@@ -19,11 +19,7 @@ from .comet import CometBrowser
 class BrowserType(Enum):
     """Supported browser types."""
     COMET = "comet"
-    # Future additions:
-    # CHROME = "chrome"
-    # FIREFOX = "firefox"
-    # EDGE = "edge"
-    # SAFARI = "safari"
+
 
 
 # Registry mapping browser types to their classes
@@ -42,26 +38,7 @@ class BrowserFactory:
     - Navigator (from navigator module)
     - Pipeline (from pipeline module)
     - Attack names (browser-specific)
-    
-    Examples:
-        # Simple usage
-        >>> from browser import BrowserFactory, BrowserType
-        >>> 
-        >>> browser = BrowserFactory.create(BrowserType.COMET)
-        >>> browser.launch()
-        >>> browser.navigate_to("https://example.com")
-        >>> browser.quit()
-        
-        # Context manager
-        >>> with BrowserFactory.create(BrowserType.COMET) as browser:
-        ...     browser.navigate_to("https://test.com")
-        ...     attacks = browser.get_attack_names()
-        
-        # Using pipeline
-        >>> from pipeline import PipelineConfig
-        >>> browser = BrowserFactory.create(BrowserType.COMET)
-        >>> config = PipelineConfig(target_url="https://test.com")
-        >>> result = browser.run_pipeline(config)
+
     """
     
     @staticmethod
@@ -77,11 +54,6 @@ class BrowserFactory:
             
         Raises:
             ValueError: If browser_type is not supported
-            
-        Examples:
-            >>> browser = BrowserFactory.create(BrowserType.COMET)
-            >>> print(browser.get_browser_info().name)
-            Perplexity Comet
         """
         if browser_type not in _BROWSER_CLASSES:
             supported = ", ".join(bt.value for bt in _BROWSER_CLASSES.keys())
@@ -107,19 +79,6 @@ class BrowserFactory:
         Args:
             browser_type: Browser type enum value
             browser_class: Class implementing BaseBrowser
-            
-        Examples:
-            >>> class MyCustomBrowser(BaseBrowser):
-            ...     def get_browser_info(self): ...
-            ...     def create_launcher(self): ...
-            ...     def create_navigator(self, driver): ...
-            ...     def create_pipeline(self, config): ...
-            ...     def get_attack_names(self): return ["CUSTOM_ATTACK"]
-            >>> 
-            >>> BrowserFactory.register_browser(
-            ...     BrowserType.CUSTOM,
-            ...     MyCustomBrowser
-            ... )
         """
         if not issubclass(browser_class, BaseBrowser):
             raise TypeError(
@@ -173,9 +132,6 @@ def create_browser(browser_type: BrowserType) -> BaseBrowser:
         
     Returns:
         Browser instance
-        
-    Examples:
-        >>> from browser import create_browser, BrowserType
-        >>> browser = create_browser(BrowserType.COMET)
+
     """
     return BrowserFactory.create(browser_type)

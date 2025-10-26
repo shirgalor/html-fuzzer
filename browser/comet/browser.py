@@ -1,15 +1,3 @@
-"""
-Comet Browser
-=============
-Complete Comet browser implementation with all components.
-
-Bundles together:
-- CometBrowserLauncher: Launch Perplexity Comet
-- CometNavigator: Navigate with file:// URL fallbacks
-- CometPipeline: Workflow with Sidecar + Assistant
-- Attack names: Comet-specific vulnerabilities
-"""
-
 from typing import List
 
 # Import base class from parent
@@ -27,30 +15,13 @@ from .pipeline import CometPipeline
 class CometBrowser(BaseBrowser):
     """
     Complete Comet browser implementation.
-    
-    Comet is a Chromium-based browser by Perplexity with:
-    - Built-in AI Assistant
-    - Perplexity Sidecar integration
-    - Chrome DevTools Protocol support
-    
-    Example:
-        >>> from browser.comet import CometBrowser
-        >>> browser = CometBrowser()
-        >>> browser.launch()
-        >>> browser.navigate_to("https://example.com")
-        >>> attacks = browser.get_attack_names()
-        >>> browser.quit()
-        
-        # Or using context manager
-        >>> with CometBrowser() as browser:
-        ...     browser.navigate_to("https://test.com")
     """
     
     def get_browser_info(self) -> BrowserInfo:
         """Get Comet browser information."""
         return BrowserInfo(
             name="Perplexity Comet",
-            version=None,  # Could be detected from executable
+            version=None,  
             executable_path=None,  # Set by launcher
             supports_devtools=True,
             supports_extensions=False  # Comet doesn't support Chrome extensions
@@ -59,7 +30,6 @@ class CometBrowser(BaseBrowser):
     def create_launcher(self):
         """
         Create CometBrowserLauncher.
-        
         Returns:
             CometBrowserLauncher instance
         """
@@ -104,12 +74,6 @@ class CometBrowser(BaseBrowser):
     def get_attack_names(self) -> List[str]:
         """
         Get Comet-specific attack/vulnerability names.
-        
-        These are test cases specific to Comet browser:
-        - Chromium-based attacks (inherited)
-        - Comet-specific features (Assistant, Sidecar)
-        - AI integration vulnerabilities
-        
         Returns:
             List of attack names for fuzzing/testing
         """

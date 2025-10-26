@@ -34,18 +34,6 @@ class BaseBrowser(ABC):
     - Navigator: Navigate pages and manage tabs
     - Pipeline: Complete automation workflows
     - Attack names: Browser-specific vulnerabilities to test
-    
-    Each browser implementation (Comet, Chrome, Firefox) should:
-    1. Provide its own launcher, navigator, and pipeline
-    2. Define browser-specific attack names
-    3. Implement browser-specific initialization
-    
-    Example:
-        >>> browser = BrowserFactory.create(BrowserType.COMET)
-        >>> browser.launch()
-        >>> browser.navigate_to("https://example.com")
-        >>> browser.run_pipeline(target_url="https://test.com")
-        >>> attacks = browser.get_attack_names()
     """
     
     def __init__(self):
