@@ -80,34 +80,29 @@ class CometPipeline(BasePipeline):
         print(f"[DEBUG] Number of tabs open: {len(all_handles)}")
         
         if len(all_handles) > 1:
-            print(f"[COMET] Multiple tabs detected, checking which has correct URL...")
+            print(f"[COMET] Multiple tabs detected - finding correct one...")
             
             SIDECAR_URL = "https://www.perplexity.ai/sidecar?copilot=true"
             correct_handle = None
             
-            # Check each tab for the correct URL
+            # Find the correct tab (first one with copilot=true)
             for handle in all_handles:
                 self.driver.switch_to.window(handle)
                 current_url = self.driver.current_url
                 print(f"[DEBUG] Tab URL: {current_url}")
                 
                 if "copilot=true" in current_url:
-                    print(f"[COMET] ✓ Found tab with copilot=true parameter")
+                    print(f"[COMET] ✓ Found tab with copilot=true - using this one")
                     correct_handle = handle
                     break
             
             if correct_handle:
                 self.driver.switch_to.window(correct_handle)
-                print(f"[COMET] Switched to correct tab")
+                print(f"[COMET] ✓ Switched to correct tab (ignoring other tabs)")
             else:
-                # Close extra tabs and keep only the first one
-                print(f"[COMET] No tab with copilot=true found, closing extra tabs...")
-                main_handle = all_handles[0]
-                for handle in all_handles[1:]:
-                    self.driver.switch_to.window(handle)
-                    self.driver.close()
-                self.driver.switch_to.window(main_handle)
-                print(f"[COMET] Closed extra tabs, will navigate to correct URL")
+                # No correct tab found, use first tab
+                self.driver.switch_to.window(all_handles[0])
+                print(f"[COMET] No copilot=true tab found, will navigate to correct URL")
         
         # Navigate to Sidecar URL
         SIDECAR_URL = "https://www.perplexity.ai/sidecar?copilot=true"

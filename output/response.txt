@@ -1,7 +1,7 @@
 PERPLEXITY ASSISTANT RESPONSE
 ======================================================================
 Captured from: Perplexity Sidecar
-Timestamp: 2025-10-26 12:15:38
+Timestamp: 2025-10-26 12:38:21
 ======================================================================
 
 The capital of France is Paris.

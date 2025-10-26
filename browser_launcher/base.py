@@ -194,6 +194,18 @@ class BrowserLauncher(ABC):
             killed = self.kill_existing_processes()
             if killed > 0:
                 time.sleep(1)  # Give processes time to fully terminate
+            
+            # Clean user data directory to start fresh (prevents tab accumulation)
+            if self.config.user_data_dir:
+                import shutil
+                user_data_path = Path(self.config.user_data_dir)
+                if user_data_path.exists():
+                    try:
+                        print(f"[*] Cleaning profile directory: {user_data_path}")
+                        shutil.rmtree(user_data_path)
+                        print(f"[*] Profile cleaned successfully")
+                    except Exception as e:
+                        print(f"[WARN] Could not clean profile: {e}")
         
         # Step 2: Launch browser
         try:
