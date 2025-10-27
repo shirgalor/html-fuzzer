@@ -53,6 +53,7 @@ class CometConversion(BaseConversion):
             from selenium.webdriver.common.keys import Keys
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
+            from selenium.common.exceptions import StaleElementReferenceException
             
             print(f"[COMET CONVERSION] Sending query...")
             print(f"[COMET CONVERSION] Query: '{query}'")
@@ -77,28 +78,185 @@ class CometConversion(BaseConversion):
             current_url = self.driver.current_url
             print(f"[DEBUG] Current URL: {current_url}")
             
-            # Try to find the ask-input element
+            # Try to find the ask-input element with multiple fallback strategies
+            ask_input = None
+            
+            # Strategy 1: Wait for Lexical editor to be ready (most reliable)
             try:
-                print("[DEBUG] Checking if ask-input exists in DOM...")
+                print("[DEBUG] Strategy 1: Waiting for Lexical editor...")
                 
-                # Wait for JavaScript to fully load the editor
                 def wait_for_lexical_editor():
                     return self.driver.execute_script('''
                         var element = document.getElementById("ask-input");
                         return element && element.getAttribute("data-lexical-editor") === "true";
                     ''')
                 
-                print("[DEBUG] Waiting for Lexical editor to be ready...")
-                WebDriverWait(self.driver, 20).until(lambda driver: wait_for_lexical_editor())
-                print("[DEBUG] ✓ Lexical editor is ready")
-                
-                # Now find the element
-                wait = WebDriverWait(self.driver, 15)
-                ask_input = wait.until(
+                WebDriverWait(self.driver, 10).until(lambda driver: wait_for_lexical_editor())
+                ask_input = WebDriverWait(self.driver, 5).until(
                     EC.element_to_be_clickable((By.ID, "ask-input"))
                 )
+                print("[DEBUG] ✓ Strategy 1 success: Lexical editor ready")
+                
+            except Exception as e1:
+                print(f"[DEBUG] Strategy 1 failed: {e1}")
+                
+                # Strategy 2: Look for ask-input by ID (less strict)
+                try:
+                    print("[DEBUG] Strategy 2: Looking for ask-input by ID...")
+                    ask_input = WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((By.ID, "ask-input"))
+                    )
+                    # Verify it's visible and enabled
+                    if ask_input.is_displayed() and ask_input.is_enabled():
+                        print("[DEBUG] ✓ Strategy 2 success: Found ask-input")
+                    else:
+                        raise Exception("Element not interactive")
+                        
+                except Exception as e2:
+                    print(f"[DEBUG] Strategy 2 failed: {e2}")
+                    
+                    # Strategy 3: Find any contenteditable with lexical attribute
+                    try:
+                        print("[DEBUG] Strategy 3: Looking for contenteditable with lexical...")
+                        contenteditables = self.driver.find_elements(By.CSS_SELECTOR, "[contenteditable='true']")
+                        print(f"[DEBUG] Found {len(contenteditables)} contenteditable elements")
+                        
+                        for idx, elem in enumerate(contenteditables):
+                            try:
+                                lexical = elem.get_attribute('data-lexical-editor')
+                                elem_id = elem.get_attribute('id')
+                                print(f"[DEBUG] Element {idx}: id='{elem_id}' lexical='{lexical}'")
+                                
+                                # Prefer ask-input, but accept any lexical editor
+                                if elem_id == 'ask-input' or lexical == 'true':
+                                    if elem.is_displayed() and elem.is_enabled():
+                                        ask_input = elem
+                                        print(f"[DEBUG] ✓ Strategy 3 success: Using element {idx}")
+                                        break
+                            except Exception as elem_err:
+                                print(f"[DEBUG] Element {idx} check failed: {elem_err}")
+                                
+                        if not ask_input:
+                            raise Exception("No suitable contenteditable found")
+                            
+                    except Exception as e3:
+                        print(f"[DEBUG] Strategy 3 failed: {e3}")
+                        raise Exception("All input detection strategies failed")
+            
+            if ask_input:
                 
                 print(f"[COMET CONVERSION] ✓ Found ask-input element")
+                
+                # Wait for element to become fully interactive
+                print(f"[COMET CONVERSION] Waiting for element to be interactive...")
+                try:
+                    # Additional wait for element to become clickable
+                    WebDriverWait(self.driver, 10).until(
+                        lambda driver: ask_input.is_displayed() and ask_input.is_enabled()
+                    )
+                    
+                    # Try multiple methods to make it interactive
+                    # Method 1: Scroll to element
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", ask_input)
+                    time.sleep(0.5)
+                    
+                    # Method 2: Try to focus via JavaScript first
+                    self.driver.execute_script("arguments[0].focus();", ask_input)
+                    time.sleep(0.5)
+                    
+                    print(f"[COMET CONVERSION] Element should now be interactive")
+                    
+                except Exception as wait_err:
+                    print(f"[COMET CONVERSION] Warning: Interactive wait failed: {wait_err}")
+                
+                # Clear any existing content first - try JavaScript approach first
+                print(f"[COMET CONVERSION] Clearing input field...")
+                
+                try:
+                    # Try JavaScript approach first (more reliable for contenteditable)
+                    self.driver.execute_script("""
+                        var element = arguments[0];
+                        element.focus();
+                        
+                        // For Lexical editor, clear content properly
+                        if (element.getAttribute('data-lexical-editor') === 'true') {
+                            // Try to clear Lexical editor content
+                            element.innerHTML = '<p><br></p>';
+                        } else {
+                            // Regular contenteditable clear
+                            element.innerHTML = '';
+                        }
+                        
+                        // Trigger input events
+                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                    """, ask_input)
+                    
+                    time.sleep(0.5)
+                    print(f"[COMET CONVERSION] ✓ Cleared via JavaScript")
+                    
+                except Exception as js_err:
+                    print(f"[COMET CONVERSION] JavaScript clear failed: {js_err}")
+                    # Fallback to click approach
+                    try:
+                        ask_input.click()
+                        time.sleep(0.5)
+                        ask_input.send_keys(Keys.CONTROL + "a")
+                        time.sleep(0.2)
+                        ask_input.send_keys(Keys.DELETE)
+                        time.sleep(0.5)
+                        print(f"[COMET CONVERSION] ✓ Cleared via keyboard")
+                    except Exception as kb_err:
+                        print(f"[COMET CONVERSION] Keyboard clear failed: {kb_err}")
+                
+                # Now try to type the query
+                print(f"[COMET CONVERSION] Typing query...")
+                
+                # Try JavaScript typing first (more reliable for Lexical)
+                try:
+                    self.driver.execute_script("""
+                        var element = arguments[0];
+                        var text = arguments[1];
+                        
+                        element.focus();
+                        
+                        // For Lexical editor, simulate typing properly
+                        if (element.getAttribute('data-lexical-editor') === 'true') {
+                            // Clear and set content for Lexical
+                            element.innerHTML = '<p>' + text + '</p>';
+                        } else {
+                            // Regular contenteditable
+                            element.textContent = text;
+                        }
+                        
+                        // Trigger input events
+                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                    """, ask_input, query)
+                    
+                    print(f"[COMET CONVERSION] ✓ Query typed via JavaScript")
+                    time.sleep(0.5)
+                    
+                except Exception as js_type_err:
+                    print(f"[COMET CONVERSION] JavaScript typing failed: {js_type_err}")
+                    # Fallback to regular send_keys
+                    try:
+                        ask_input.send_keys(query)
+                        print(f"[COMET CONVERSION] ✓ Query typed via send_keys")
+                    except Exception as sendkeys_err:
+                        print(f"[COMET CONVERSION] Send keys failed: {sendkeys_err}")
+                        raise Exception(f"All typing methods failed")
+                
+                print(f"[COMET CONVERSION] ✓ Query typed successfully")
+                time.sleep(0.5)
+                
+                if submit:
+                    print(f"[COMET CONVERSION] Submitting query...")
+                    ask_input.send_keys(Keys.RETURN)
+                    time.sleep(1)
+                    print(f"[COMET CONVERSION] ✓ Query submitted")
+                
+                print(f"[COMET CONVERSION] ✓ Found input element")
                 
                 # Clear any existing content first
                 print(f"[COMET CONVERSION] Clearing input field...")
@@ -125,9 +283,8 @@ class CometConversion(BaseConversion):
                     print(f"[COMET CONVERSION] ✓ Query submitted")
                 
                 return True
-                    
-            except Exception as e:
-                print(f"[COMET CONVERSION] Could not find ask-input: {e}")
+            else:
+                print(f"[COMET CONVERSION] ✗ Could not find suitable input element")
                 
                 # Debug: Save page source for inspection
                 try:
@@ -139,50 +296,7 @@ class CometConversion(BaseConversion):
                 except Exception as debug_err:
                     print(f"[WARN] Could not save debug page source: {debug_err}")
                 
-                # Fallback: try any contenteditable
-                try:
-                    print(f"[COMET CONVERSION] Trying contenteditable fallback...")
-                    
-                    # Check for any contenteditable elements
-                    contenteditables = self.driver.find_elements(By.CSS_SELECTOR, "[contenteditable='true']")
-                    print(f"[DEBUG] Found {len(contenteditables)} contenteditable elements")
-                    
-                    # Try to get more info about each one
-                    for idx, elem in enumerate(contenteditables):
-                        try:
-                            classes = elem.get_attribute('class') or 'no-class'
-                            id_attr = elem.get_attribute('id') or 'no-id'
-                            lexical = elem.get_attribute('data-lexical-editor') or 'no-lexical'
-                            print(f"[DEBUG] Contenteditable {idx}: id='{id_attr}' lexical='{lexical}' class='{classes[:100]}...'")
-                        except:
-                            print(f"[DEBUG] Contenteditable {idx}: <could not get attributes>")
-                    
-                    wait = WebDriverWait(self.driver, 5)
-                    contenteditable = wait.until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, "[contenteditable='true']"))
-                    )
-                    
-                    contenteditable.click()
-                    time.sleep(0.5)
-                    
-                    # Clear existing content
-                    contenteditable.send_keys(Keys.CONTROL + "a")
-                    time.sleep(0.2)
-                    contenteditable.send_keys(Keys.DELETE)
-                    time.sleep(0.5)
-                    
-                    contenteditable.send_keys(query)
-                    
-                    if submit:
-                        contenteditable.send_keys(Keys.RETURN)
-                        time.sleep(1)
-                    
-                    print(f"[COMET CONVERSION] ✓ Query sent via contenteditable fallback")
-                    return True
-                    
-                except Exception as e2:
-                    print(f"[COMET CONVERSION] ✗ All methods failed: {e2}")
-                    return False
+                return False
             
         except Exception as e:
             print(f"[COMET CONVERSION ERROR] Failed to send query: {e}")
@@ -208,6 +322,7 @@ class CometConversion(BaseConversion):
             from selenium.webdriver.common.by import By
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
+            from selenium.common.exceptions import StaleElementReferenceException
             
             print(f"[COMET CONVERSION] Capturing response...")
             print(f"[COMET CONVERSION] Wait for completion: {wait_for_completion}")
@@ -250,7 +365,24 @@ class CometConversion(BaseConversion):
                 stable_count = 0
                 
                 while time.time() - start_time < max_wait:
-                    current_text = response_element.text.strip()
+                    try:
+                        # Try to get text from current element
+                        current_text = response_element.text.strip()
+                    except StaleElementReferenceException:
+                        print(f"[COMET CONVERSION] Element became stale, re-finding...")
+                        # Re-find the response element
+                        try:
+                            response_element = WebDriverWait(self.driver, 10).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                            )
+                            current_text = response_element.text.strip()
+                            print(f"[COMET CONVERSION] ✓ Re-found response element")
+                        except Exception as refind_err:
+                            print(f"[COMET CONVERSION] Failed to re-find element: {refind_err}")
+                            current_text = ""
+                    except Exception as text_err:
+                        print(f"[COMET CONVERSION] Error getting text: {text_err}")
+                        current_text = ""
                     
                     if current_text == previous_text and current_text:
                         stable_count += 1
