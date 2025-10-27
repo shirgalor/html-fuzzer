@@ -76,7 +76,6 @@ class CometConversion(BaseConversion):
             # Debug: Check current URL and page state
             current_url = self.driver.current_url
             print(f"[DEBUG] Current URL: {current_url}")
-            print(f"[DEBUG] Page title: {self.driver.title}")
             
             # Try to find the ask-input element
             try:
