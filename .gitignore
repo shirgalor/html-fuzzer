@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Comet temporary profile and chromedriver downloads
+comet_profile_tmp/
+chromedriver_*/
+chromedriver_*/**
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Logs and output
+output/
+*.log
+
+# Windows
+Thumbs.db
+.DS_Store
