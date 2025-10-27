@@ -177,12 +177,7 @@ class CometConversion(BaseConversion):
             
             # Response selectors to try
             response_selectors = [
-                "div[class*='answer']",
-                "div[class*='response']",
-                "div[class*='message']",
-                "div[data-role='assistant']",
-                ".prose",
-                "[class*='markdown']"
+                ".prose"
             ]
             
             start_time = time.time()
@@ -273,12 +268,7 @@ class CometConversion(BaseConversion):
             
             # Response selectors to try
             response_selectors = [
-                "div[class*='answer']",
-                "div[class*='response']",
-                "div[class*='message']",
-                "div[data-role='assistant']",
-                ".prose",
-                "[class*='markdown']"
+                ".prose"
             ]
             
             start_time = time.time()
