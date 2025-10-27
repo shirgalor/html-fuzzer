@@ -25,7 +25,6 @@ QUERY = "What is the capital of France?"
 USE_CONVERSION = True  # True = use new conversion module, False = use legacy navigator
 SUBMIT_QUERY = True  # True to submit, False to just type
 READ_RESPONSE = True  # True to read the assistant's response
-SAVE_HTML = "output/response.html"  # Path to save HTML, or None to skip
 SAVE_TEXT = "output/response.txt"   # Path to save plain text, or None to skip
 
 # MODE 2: Conversation (multi-turn mode - full conversation with assistant)
@@ -62,8 +61,6 @@ def main():
         print(f"Use Conversion Module: {USE_CONVERSION}")
         print(f"Submit: {SUBMIT_QUERY}")
         print(f"Read Response: {READ_RESPONSE}")
-        if SAVE_HTML:
-            print(f"Save HTML: {SAVE_HTML}")
         if SAVE_TEXT:
             print(f"Save Text: {SAVE_TEXT}")
     else:
@@ -99,8 +96,6 @@ def main():
             pipeline_kwargs['submit'] = SUBMIT_QUERY
             pipeline_kwargs['read_responses'] = READ_RESPONSE
             pipeline_kwargs['use_conversion'] = USE_CONVERSION  # NEW!
-            if SAVE_HTML:
-                pipeline_kwargs['save_html'] = SAVE_HTML  # NEW!
             if SAVE_TEXT:
                 pipeline_kwargs['save_text'] = SAVE_TEXT  # NEW!
         
@@ -122,9 +117,6 @@ def main():
             print("=" * 60)
             print(f"Success: {conv_result['success']}")
             print(f"Query: {conv_result['query']}")
-            
-            if conv_result.get('html_filepath'):
-                print(f"\n📄 HTML saved to: {conv_result['html_filepath']}")
             
             if conv_result.get('text_filepath'):
                 print(f"📝 Text saved to: {conv_result['text_filepath']}")

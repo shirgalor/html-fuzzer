@@ -1,10 +1,13 @@
 PERPLEXITY ASSISTANT RESPONSE
 ======================================================================
 Captured from: Perplexity Sidecar
-Timestamp: 2025-10-27 16:20:01
+Timestamp: 2025-10-27 17:12:45
 ======================================================================
 
-The capital of France is Paris. Paris is located in the north-central part of the country along the Seine River and is renowned as a major center of culture, commerce, and history.wikipedia+3
+Paris hosts over two million residents in the city proper and more than 13 million in its metropolitan area as of 2025.wikipedia
+It has remained the capital of France since its liberation in 1944, with only a brief exception during World War II when the capital was temporarily moved to Vichy.adelphi+1
+The city is renowned for landmarks such as the Eiffel Tower, Notre-Dame Cathedral, and Louvre Museum, making it an iconic travel destination.cia-france+1
+Paris is recognized globally as a cultural and commercial hub and has long been regarded as the “city of light.”britannica+1
 
 ======================================================================
 End of Response

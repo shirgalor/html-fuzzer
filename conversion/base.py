@@ -20,16 +20,12 @@ class ConversionResult:
         success: Whether the operation succeeded
         query: The query that was sent
         response: The assistant's response text (if captured)
-        response_html: The assistant's response HTML (if captured)
-        html_filepath: Path to saved HTML file (if saved)
         text_filepath: Path to saved text file (if saved)
         error: Error message if failed
     """
     success: bool
     query: str
     response: Optional[str] = None
-    response_html: Optional[str] = None
-    html_filepath: Optional[str] = None
     text_filepath: Optional[str] = None
     error: Optional[str] = None
 
@@ -86,32 +82,15 @@ class BaseConversion(ABC):
     def capture_response_html(self, wait_for_completion: bool = True,
                              max_wait: float = 60.0) -> Optional[str]:
         """
-        Capture the assistant's response as HTML (optional - can be overridden).
-        
-        Args:
-            wait_for_completion: Wait for response to finish streaming
-            max_wait: Maximum time to wait (seconds)
-            
-        Returns:
-            The response HTML, or None if not implemented/failed
+        DEPRECATED: HTML capture is no longer supported.
         """
-        # Default implementation: not supported
         return None
     
     def save_response_html(self, filepath: str, wait_for_completion: bool = True,
                           max_wait: float = 60.0) -> bool:
         """
-        Save the assistant's response as an HTML file (optional - can be overridden).
-        
-        Args:
-            filepath: Path where to save the HTML file
-            wait_for_completion: Wait for response to finish streaming
-            max_wait: Maximum time to wait (seconds)
-            
-        Returns:
-            True if saved successfully, False otherwise
+        DEPRECATED: HTML saving is no longer supported.
         """
-        # Default implementation: not supported
         return False
     
     def save_response_text(self, filepath: str, wait_for_completion: bool = True,
@@ -169,8 +148,6 @@ class BaseConversion(ABC):
             
             # Capture response if requested
             response_text = None
-            response_html = None
-            html_filepath = None
             text_filepath = None
             
             if capture:
@@ -185,27 +162,6 @@ class BaseConversion(ABC):
                 else:
                     print(f"[CONVERSION] ⚠ No response text captured")
             
-            # Save HTML if requested
-            if save_html:
-                print(f"[CONVERSION] Saving HTML...")
-                html_saved = self.save_response_html(
-                    filepath=save_html,
-                    wait_for_completion=True,
-                    max_wait=max_wait
-                )
-                
-                if html_saved:
-                    html_filepath = save_html
-                    print(f"[CONVERSION] ✓ HTML saved successfully")
-                    
-                    # Also capture the HTML content
-                    response_html = self.capture_response_html(
-                        wait_for_completion=False,  # Already waited
-                        max_wait=5.0
-                    )
-                else:
-                    print(f"[CONVERSION] ⚠ Failed to save HTML")
-            
             # Save text if requested
             if save_text:
                 print(f"[CONVERSION] Saving text...")
@@ -215,23 +171,47 @@ class BaseConversion(ABC):
                     max_wait=max_wait
                 )
                 
+                print(f"[CONVERSION DEBUG] text_saved result: {text_saved}")
+                
                 if text_saved:
                     text_filepath = save_text
                     print(f"[CONVERSION] ✓ Text saved successfully")
+                    print(f"[CONVERSION DEBUG] text_filepath set to: {text_filepath}")
                 else:
                     print(f"[CONVERSION] ⚠ Failed to save text")
             
-            # Determine success
-            success = send_success and (not capture or response_text is not None)
+            # Determine success - succeed if query was sent and either:
+            # 1. Response was captured successfully, OR 
+            # 2. Text file was saved successfully
+            response_captured = not capture or response_text is not None
+            text_saved = save_text and text_filepath
+            success = send_success and (response_captured or text_saved)
+            
+            # Debug logging
+            print(f"[CONVERSION DEBUG] send_success: {send_success}")
+            print(f"[CONVERSION DEBUG] capture: {capture}")
+            print(f"[CONVERSION DEBUG] response_text: {'Yes' if response_text else 'None'}")
+            print(f"[CONVERSION DEBUG] response_captured: {response_captured}")
+            print(f"[CONVERSION DEBUG] text_saved: {text_saved}")
+            print(f"[CONVERSION DEBUG] text_filepath: {text_filepath}")
+            print(f"[CONVERSION DEBUG] final success: {success}")
+            
+            # Override error message if we have partial success
+            error_msg = None
+            if not success:
+                if not send_success:
+                    error_msg = "Failed to send query"
+                elif capture and not response_text and not text_saved:
+                    error_msg = "Failed to capture response and no files saved"
+                else:
+                    error_msg = "Unknown conversion error"
             
             return ConversionResult(
                 success=success,
                 query=query,
                 response=response_text,
-                response_html=response_html,
-                html_filepath=html_filepath,
                 text_filepath=text_filepath,
-                error=None if success else "Failed to capture response"
+                error=error_msg
             )
         
         except Exception as e:

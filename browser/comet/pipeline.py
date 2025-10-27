@@ -42,7 +42,7 @@ class CometPipeline(BasePipeline):
             driver: Selenium WebDriver (already attached to Comet)
             navigator: CometNavigator instance (already created)
             config: Pipeline configuration
-            **kwargs: Optional parameters (query, submit, conversation, read_responses, use_conversion, save_html)
+            **kwargs: Optional parameters (query, submit, conversation, read_responses, use_conversion, save_text)
         """
         super().__init__(driver, navigator, config, **kwargs)
         
@@ -58,8 +58,7 @@ class CometPipeline(BasePipeline):
         self.use_conversion: bool = kwargs.get('use_conversion', False)
         self.conversion = None  # Will be initialized if needed
         
-        # NEW: HTML and text saving
-        self.save_html: Optional[str] = kwargs.get('save_html', None)
+        # NEW: Text saving
         self.save_text: Optional[str] = kwargs.get('save_text', None)
     
     def get_browser_name(self) -> str:
@@ -163,7 +162,6 @@ class CometPipeline(BasePipeline):
             conversion_result = self.conversion.execute(
                 query=self.query,
                 capture=self.read_responses,
-                save_html=self.save_html,  # Save HTML if specified
                 save_text=self.save_text,  # Save text if specified
                 max_wait=60.0
             )
@@ -173,8 +171,6 @@ class CometPipeline(BasePipeline):
                 'success': conversion_result.success,
                 'query': conversion_result.query,
                 'response': conversion_result.response,
-                'response_html': conversion_result.response_html,
-                'html_filepath': conversion_result.html_filepath,
                 'text_filepath': conversion_result.text_filepath,
                 'error': conversion_result.error
             }
@@ -183,8 +179,6 @@ class CometPipeline(BasePipeline):
                 print(f"[COMET] ✓ Conversion completed successfully")
                 if conversion_result.response:
                     print(f"[COMET] ✓ Response captured ({len(conversion_result.response)} chars)")
-                if conversion_result.html_filepath:
-                    print(f"[COMET] ✓ HTML saved to: {conversion_result.html_filepath}")
                 if conversion_result.text_filepath:
                     print(f"[COMET] ✓ Text saved to: {conversion_result.text_filepath}")
             else:
